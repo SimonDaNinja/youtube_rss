@@ -3,7 +3,11 @@ from html.parser import HTMLParser
 import requests as req
 import re
 import feedparser
-from tor_requests.tor_requests import getHttpResponseUsingSocks5
+try:
+    from tor_requests.tor_requests import getHttpResponseUsingSocks5
+except:
+    print("you probably haven't run the command\ngit submodule update --init --recursive")
+    exit()
 import os
 
 ###########
