@@ -112,7 +112,8 @@ def escapeQuery(query):
 def getChannelQueryHtml(query, getHttpContent = req.get):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAg%253D%253D'
     response = getHttpContent(url)
-    return response.text
+    if response.text is not None:
+        return response.text
 
 # use this function to ask an interactive yes/no question to the user
 def doYnQuery(query):
@@ -139,10 +140,13 @@ def doSelectionQuery(query, options):
 # if you have a channel url, you can use this function to extract the rss address
 def getRssAddressFromChannelUrl(url, getHttpContent = req.get):
     response = getHttpContent(url)
-    htmlContent = response.text
-    parser = RssAddressParser()
-    parser.feed(htmlContent)
-    return parser.rssAddress
+    if response.text is not None:
+        htmlContent = response.text
+        parser = RssAddressParser()
+        parser.feed(htmlContent)
+        return parser.rssAddress
+    else:
+        return None
 
 # if you have a channel id, you can use this function to get the rss address
 def getRssAddressFromChannelId(channelId):
@@ -151,17 +155,23 @@ def getRssAddressFromChannelId(channelId):
 # use this function to get query results from searching for a channel
 def getChannelQueryResults(query, getHttpContent = req.get):
     htmlContent = getChannelQueryHtml(query, getHttpContent = getHttpContent)
-    parser = ChannelQueryParser()
-    parser.feed(htmlContent)
-    return parser.resultList
+    if htmlContent is not None:
+        parser = ChannelQueryParser()
+        parser.feed(htmlContent)
+        return parser.resultList
+    else:
+        return None
 
 # use this function to get rss entries from channel id
 def getRssEntriesFromChannelId(channelId, getHttpContent = req.get):
     rssAddress = getRssAddressFromChannelId(channelId)
     response = getHttpContent(rssAddress)
-    rssContent = response.text
-    entries = feedparser.parse(rssContent)['entries']
-    return entries
+    if response.text is not None:
+        rssContent = response.text
+        entries = feedparser.parse(rssContent)['entries']
+        return entries
+    else:
+        return None
 
 def initiateYouTubeRssDatabase():
     database = {}
@@ -182,11 +192,15 @@ def refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent=req.
     for channelId in channelIdList:
         localFeed = localFeeds[channelId]
         remoteFeed = getRssEntriesFromChannelId(channelId, getHttpContent=getHttpContent)
-        remoteFeed.reverse()
-        for entry in remoteFeed:
-            filteredEntry = getRelevantDictFromFeedParserDict(entry)
-            if filteredEntry not in localFeed:
-                localFeed.insert(0, filteredEntry)
+        if remoteFeed is not None:
+            remoteFeed.reverse()
+            for entry in remoteFeed:
+                filteredEntry = getRelevantDictFromFeedParserDict(entry)
+                if filteredEntry not in localFeed:
+                    localFeed.insert(0, filteredEntry)
+            return True
+        else:
+            return False
 
 def openUrlInMpv(url, useTor=False):
     while True:
@@ -228,14 +242,21 @@ def outputDatabaseToFile(database, filename):
 
 def doInteractiveChannelSubscribe(database, getHttpContent=req.get):
     query = input("Enter channel to search for: ")
-    resultList = getChannelQueryResults(query, getHttpContent = getHttpContent)
-    print(f"Going through search results for '{query}'...\n")
-    for i, result in enumerate(resultList):
-        print(f"Search result {i+1}:\nTitle: {result.title}\nChannel ID: {result.channelId}\nRSS feed: {getRssAddressFromChannelId(result.channelId)}\n")
-        if doYnQuery('Add this channel to subscriptions?'):
-            addSubscriptionsToDatabase(database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent)
-            break
-    outputDatabaseToFile(database, DATABASE_PATH)
+    querying = True
+    while querying:
+        resultList = getChannelQueryResults(query, getHttpContent = getHttpContent)
+        if resultList is not None:
+            print(f"Going through search results for '{query}'...\n")
+            for i, result in enumerate(resultList):
+                print(f"Search result {i+1}:\nTitle: {result.title}\nChannel ID: {result.channelId}\nRSS feed: {getRssAddressFromChannelId(result.channelId)}\n")
+                if doYnQuery('Add this channel to subscriptions?'):
+                    addSubscriptionsToDatabase(database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent)
+                    break
+            outputDatabaseToFile(database, DATABASE_PATH)
+            querying = False
+        else:
+            if not doYnQuery("Something went wrong with the connection. Try again?"):
+                querying = False
 
 def doShowSubscriptions(database):
     print("\nYou are subscribed to these channels:\n")
@@ -258,7 +279,13 @@ def doShowDatabase(database):
 
 def doRefreshSubscriptions(database, getHttpContent = req.get):
     channelIdList = list(database['id to title'])
-    refreshSubscriptionsByChannelId(channelIdList, database)
+    refreshing = True
+    while refreshing:
+        if not refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent = getHttpContent):
+            if not doYnQuery("Something went wrong with the connection. Try again?"):
+                refreshing = False
+        else:
+            refreshing = False
     outputDatabaseToFile(database, DATABASE_PATH)
 
 # main section (demonstration of tools)
