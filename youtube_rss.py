@@ -5,10 +5,12 @@ import re
 import feedparser
 try:
     from tor_requests.tor_requests import getHttpResponseUsingSocks5
+    from tor_requests.tor_requests import generateNewSocks5Auth
 except:
     print("you probably haven't run the command\ngit submodule update --init --recursive")
     exit()
-import os
+import subprocess
+
 
 ###########
 # classes #
@@ -124,6 +126,19 @@ def getRssEntriesFromChannelId(channelId, getHttpContent = req.get):
     entries = feedparser.parse(rssContent)['entries']
     return entries
 
+def openUrlInMpv(url, useTor=False):
+    while True:
+        command = ['mpv']
+        if useTor:
+            username, password = generateNewSocks5Auth()
+            command.append(f'--ytdl-raw-options=proxy=[socks5://{username}:{password}@127.0.0.1:9050]')
+        command.append(url)
+        mpvProcess = subprocess.Popen(command, stdout = subprocess.DEVNULL, stderr = subprocess.STDOUT)
+        mpvProcess.wait()
+        result = mpvProcess.poll()
+        if result in [0,4] or not doYnQuery(f"Something went wrong when playing the video (exit code: {result}). Try again?"):
+            break
+
 if __name__ == '__main__':
     useTor = doYnQuery("Do you want to use tor?")
     if useTor:
@@ -143,8 +158,5 @@ if __name__ == '__main__':
     for entry in entries:
         print(f'video title: {entry.title}\nvideo url: {entry.link}\n')
         if doYnQuery("Do you want to view this video?"):
-            if useTor:
-                os.system('torsocks -i mpv ' + entry.link + ' > /dev/null 2>&1 &')
-            else:
-                os.system('mpv ' + entry.link + ' > /dev/null 2>&1 &')
+            openUrlInMpv(entry.link, useTor)
             break
