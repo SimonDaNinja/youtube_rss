@@ -27,5 +27,5 @@ The program also assumes that [Mpv](https://github.com/mpv-player/mpv) is
 installed in the environment. In, for example, Ubuntu, this can be accomplished
 by running `sudo apt-get install mpv`.
 
-For using Tor, the program assumes that Tor is installed and currently running
+For using Tor, youtube\_rss assumes that Tor is installed and currently running
 on port `9050`.
