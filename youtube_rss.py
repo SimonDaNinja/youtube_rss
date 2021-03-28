@@ -129,7 +129,7 @@ def doYnQuery(query):
 
 def doSelectionQuery(query, options):
     while True:
-        ans = input("\n".join([f"{i+1}: {option}" for i, option in enumerate(options)] + [query + f' (1-{len(options)}) ']))
+        ans = input("\n" + "\n".join([f"{i+1}: {option}" for i, option in enumerate(options)] + ['\n' + query + f' (1-{len(options)}) ']))
         if not ans.isdigit() or int(ans)-1 not in range(len(query)):
             print('invalid response!')
         else:
@@ -261,7 +261,7 @@ def doInteractiveChannelSubscribe(database, getHttpContent=req.get):
 def doShowSubscriptions(database):
     print("\nYou are subscribed to these channels:\n")
     for title in database['title to id']:
-        print(f"title: {title}\nid: {database['title to id'][title]}\n")
+        print(f"title: {title}\nid: {database['title to id'][title]}")
 
 def doInteractivePlayVideo(database, useTor):
     channelMenuList = list(database['title to id'])
