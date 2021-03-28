@@ -162,6 +162,12 @@ def openUrlInMpv(url, useTor=False):
             break
 
 if __name__ == '__main__':
+
+    print("SimonDaNinja/youtube_rss  Copyright (C) 2021  Simon Liljestrand\n" + \
+    "This program comes with ABSOLUTELY NO WARRANTY.\n" + \
+    "This is free software, and you are welcome to redistribute it\n" + \
+    "under certain conditions.\n")
+
     useTor = doYnQuery("Do you want to use tor?")
     if useTor:
         getHttpContent = getHttpResponseUsingSocks5
