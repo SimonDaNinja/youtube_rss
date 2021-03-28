@@ -298,7 +298,7 @@ if __name__ == '__main__':
     else:
         database = initiateYouTubeRssDatabase()
 
-    print("SimonDaNinja/youtube_rss  Copyright (C) 2021  Simon Liljestrand\n" +
+    print("\nSimonDaNinja/youtube_rss  Copyright (C) 2021  Simon Liljestrand\n" +
     "This program comes with ABSOLUTELY NO WARRANTY.\n" +
     "This is free software, and you are welcome to redistribute it\n" +
     "under certain conditions.\n")
