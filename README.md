@@ -11,7 +11,7 @@ focused on getting ahold of and parsing RSS-content.
 This is NOT an application, but rather it is a module meant to help with
 application development.
 
-## dependencies
+## Dependencies
 
 The following python modules must be installed, e.g. using pip:
 ```
