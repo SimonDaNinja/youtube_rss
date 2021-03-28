@@ -8,8 +8,9 @@ As my current plan is to use RSS to keep track of "subscriptions" to channels
 Google account and is not compatible with anonymity), much of the material is
 focused on getting ahold of and parsing RSS-content.
 
-This is NOT an application, but rather it is a module meant to help with
-application development.
+This is not primarilly intended as an application, but rather it is a module
+meant to help with application development. However, it does pack a
+proof-of-concept demo application in the main section of the file.
 
 ## Dependencies
 
