@@ -25,6 +25,7 @@ from html.parser import HTMLParser
 import requests as req
 import re
 import feedparser
+import json
 try:
     from tor_requests.tor_requests import getHttpResponseUsingSocks5
     from tor_requests.tor_requests import generateNewSocks5Auth
@@ -33,14 +34,13 @@ except:
     exit()
 import subprocess
 
-
 ###########
 # classes #
 ###########
 
 # parser classes #
 
-# Parser used for extracting an RSS Adress from channel page HTML
+# Parser used for extracting an RSS Address from channel page HTML
 class RssAddressParser(HTMLParser):
 
     def __init__(self):
@@ -108,7 +108,6 @@ def getChannelQueryHtml(query, getHttpContent = req.get):
 
 # use this function to ask an interactive yes/no question to the user
 def doYnQuery(query):
-    yn = ""
     while True:
         yn = input(query + ' [y/n] ').lower()
         if yn not in ['y', 'n']:
@@ -118,6 +117,14 @@ def doYnQuery(query):
     if yn == 'y':
         return True
     return False
+
+def doSelectionQuery(query, options):
+    while True:
+        ans = input("\n".join([f"{i+1}: {option}" for i, option in enumerate(options)] + [query + f' (1-{len(options)})']))
+        if not ans.isdigit() or int(ans)-1 not in range(len(query)):
+            print('invalid response!')
+        else:
+            return int(ans)-1
 
 # central functions #
 
@@ -142,11 +149,35 @@ def getChannelQueryResults(query, getHttpContent = req.get):
 
 # use this function to get rss entries from channel id
 def getRssEntriesFromChannelId(channelId, getHttpContent = req.get):
-    rssAdress = getRssAddressFromChannelId(channelId)
-    response = getHttpContent(rssAdress)
+    rssAddress = getRssAddressFromChannelId(channelId)
+    response = getHttpContent(rssAddress)
     rssContent = response.text
     entries = feedparser.parse(rssContent)['entries']
     return entries
+
+def initiateYouTubeRssDatabase():
+    database = {}
+    database['feeds'] = {}
+    database['id to title'] = {}
+    database['title to id'] = {}
+    return database
+
+def addSubscriptionsToDatabase(database, channelId, channelTitle, refresh=False):
+    database['feeds'][channelId] = []
+    database['id to title'][channelId] = channelTitle
+    database['title to id'][channelTitle] = channelId
+    if refresh:
+        refreshSubscriptionsByChannelId([channelId], database)
+
+def refreshSubscriptionsByChannelId(channelIdList, database):
+    localFeeds = database['feeds']
+    for channelId in channelIdList:
+        localFeed = localFeeds[channelId]
+        remoteFeed = getRssEntriesFromChannelId(channelId)
+        remoteFeed.reverse()
+        for entry in remoteFeed:
+            if entry not in localFeed:
+                localFeed.insert(0, getRelevantDictFromFeedParserDict(entry))
 
 def openUrlInMpv(url, useTor=False):
     while True:
@@ -161,11 +192,66 @@ def openUrlInMpv(url, useTor=False):
         if result in [0,4] or not doYnQuery(f"Something went wrong when playing the video (exit code: {result}). Try again?"):
             break
 
-if __name__ == '__main__':
+def getRelevantDictFromFeedParserDict(feedparserDict):
+    outputDict =    {
+                        'id'        : feedparserDict['id'],
+                        'link'      : feedparserDict['link'],
+                        'title'     : feedparserDict['title'],
+                        'thumbnail' : feedparserDict['media_thumbnail'][0]['url']
+                    }
+    return outputDict
 
-    print("SimonDaNinja/youtube_rss  Copyright (C) 2021  Simon Liljestrand\n" + \
-    "This program comes with ABSOLUTELY NO WARRANTY.\n" + \
-    "This is free software, and you are welcome to redistribute it\n" + \
+def parseDatabaseContent(content):
+    return json.loads(content)
+
+def parseDatabaseFile(filename):
+    with open(filename, 'r') as filePointer:
+        return json.load(filePointer)
+
+def getDatabaseString(database):
+    return json.dumps(database, indent=4)
+
+def outputDatabaseToFile(database, filename):
+    with open(filename, 'r') as filePointer:
+        return json.dump(database, filePointer)
+
+# Demonstration Functions #
+
+def doInteractiveChannelSubscribe(database):
+    query = input("Enter channel to search for: ")
+    resultList = getChannelQueryResults(query)
+    print(f"Going through search results for '{query}'...\n")
+    for i, result in enumerate(resultList):
+        print(f"Search result {i+1}:\nTitle: {result.title}\nChannel ID: {result.channelId}\nRSS feed: {getRssAddressFromChannelId(result.channelId)}\n")
+        if doYnQuery('Add this channel to subscriptions?'):
+            addSubscriptionsToDatabase(database, result.channelId, result.title, refresh=True)
+            break
+
+def doShowSubscriptions(database):
+    print("\nYou are subscribed to these channels:\n")
+    for title in database['title to id']:
+        print(f"title: {title}\nid: {database['title to id'][title]}\n")
+
+def doInteractivePlayVideo(database):
+    channelMenuList = list(database['title to id'])
+    print("in here")
+    channelTitle = channelMenuList[doSelectionQuery("Which channel do you want to watch a video from?", channelMenuList)]
+    print("now here")
+    channelId = database['title to id'][channelTitle]
+    videos = database['feeds'][channelId]
+    videosMenuList = [video['title'] for video in videos]
+    videoUrl = videos[doSelectionQuery("Which video do you want to watch?", videosMenuList)]['link']
+    openUrlInMpv(videoUrl)
+
+def doShowDatabase(database):
+    print(getDatabaseString(database))
+
+# main section (demonstration of tools)
+
+if __name__ == '__main__':
+    print("SimonDaNinja/youtube_rss  Copyright (C) 2021  Simon Liljestrand\n" +
+    "This program comes with ABSOLUTELY NO WARRANTY.\n" +
+    "This is free software, and you are welcome to redistribute it\n" +
     "under certain conditions.\n")
 
     useTor = doYnQuery("Do you want to use tor?")
@@ -173,18 +259,22 @@ if __name__ == '__main__':
         getHttpContent = getHttpResponseUsingSocks5
     else:
         getHttpContent = req.get
-    query = input("enter channel to search for: ")
-    resultList = getChannelQueryResults(query)
-    print(f"these channels were found by searching for '{query}':\n")
-    for i, result in enumerate(resultList):
-        print(f"search result {i+1}:\nTitle: {result.title}\nChannel ID: {result.channelId}\nRSS feed: {getRssAddressFromChannelId(result.channelId)}\n")
-        if doYnQuery('Is this the channel whose RSS you want to parse?'):
-            entries = getRssEntriesFromChannelId(result.channelId, getHttpContent = getHttpContent)
+
+    database = initiateYouTubeRssDatabase()
+
+    menuOptions =   {
+                        "Subscribe to new channel"  : doInteractiveChannelSubscribe,
+                        "Show subscriptions"        : doShowSubscriptions,
+                        "Play video"                : doInteractivePlayVideo,
+                        "Show database"             : doShowDatabase,
+                        "Quit"                      : None
+                    }
+
+    menuList = list(menuOptions)
+
+    while True:
+        choice = menuList[doSelectionQuery("What do you want to do?", menuList)]
+        chosenFunction = menuOptions[choice]
+        if chosenFunction is None:
             break
-    
-    print("\nthese videos are in the rss feed:\n")
-    for entry in entries:
-        print(f'video title: {entry.title}\nvideo url: {entry.link}\n')
-        if doYnQuery("Do you want to view this video?"):
-            openUrlInMpv(entry.link, useTor)
-            break
+        chosenFunction(database)
