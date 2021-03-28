@@ -265,9 +265,7 @@ def doShowSubscriptions(database):
 
 def doInteractivePlayVideo(database, useTor):
     channelMenuList = list(database['title to id'])
-    print("in here")
     channelTitle = channelMenuList[doSelectionQuery("Which channel do you want to watch a video from?", channelMenuList)]
-    print("now here")
     channelId = database['title to id'][channelTitle]
     videos = database['feeds'][channelId]
     videosMenuList = [video['title'] for video in videos]
