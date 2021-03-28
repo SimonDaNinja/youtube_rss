@@ -1,0 +1,3 @@
+[submodule "tor_requests"]
+	path = tor_requests
+	url = https://github.com/SimonDaNinja/tor_requests
