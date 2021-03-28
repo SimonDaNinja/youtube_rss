@@ -20,7 +20,6 @@
 
 #   Contact by email: simon@simonssoffa.xyz
 
-
 from html.parser import HTMLParser
 import requests as req
 import re
@@ -33,6 +32,15 @@ except:
     print("you probably haven't run the command\ngit submodule update --init --recursive")
     exit()
 import subprocess
+import os
+
+#############
+# constants #
+#############
+
+HOME = os.environ.get('HOME')
+YOUTUBE_RSS_DIR = '/'.join([HOME,'.youtube_rss'])
+DATABASE_PATH  = '/'.join([YOUTUBE_RSS_DIR, 'database'])
 
 ###########
 # classes #
@@ -120,7 +128,7 @@ def doYnQuery(query):
 
 def doSelectionQuery(query, options):
     while True:
-        ans = input("\n".join([f"{i+1}: {option}" for i, option in enumerate(options)] + [query + f' (1-{len(options)})']))
+        ans = input("\n".join([f"{i+1}: {option}" for i, option in enumerate(options)] + [query + f' (1-{len(options)}) ']))
         if not ans.isdigit() or int(ans)-1 not in range(len(query)):
             print('invalid response!')
         else:
@@ -162,22 +170,23 @@ def initiateYouTubeRssDatabase():
     database['title to id'] = {}
     return database
 
-def addSubscriptionsToDatabase(database, channelId, channelTitle, refresh=False):
+def addSubscriptionsToDatabase(database, channelId, channelTitle, refresh=False, getHttpContent=req.get):
     database['feeds'][channelId] = []
     database['id to title'][channelId] = channelTitle
     database['title to id'][channelTitle] = channelId
     if refresh:
-        refreshSubscriptionsByChannelId([channelId], database)
+        refreshSubscriptionsByChannelId([channelId], database, getHttpContent=getHttpContent)
 
-def refreshSubscriptionsByChannelId(channelIdList, database):
+def refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent=req.get):
     localFeeds = database['feeds']
     for channelId in channelIdList:
         localFeed = localFeeds[channelId]
-        remoteFeed = getRssEntriesFromChannelId(channelId)
+        remoteFeed = getRssEntriesFromChannelId(channelId, getHttpContent=getHttpContent)
         remoteFeed.reverse()
         for entry in remoteFeed:
-            if entry not in localFeed:
-                localFeed.insert(0, getRelevantDictFromFeedParserDict(entry))
+            filteredEntry = getRelevantDictFromFeedParserDict(entry)
+            if filteredEntry not in localFeed:
+                localFeed.insert(0, filteredEntry)
 
 def openUrlInMpv(url, useTor=False):
     while True:
@@ -212,27 +221,28 @@ def getDatabaseString(database):
     return json.dumps(database, indent=4)
 
 def outputDatabaseToFile(database, filename):
-    with open(filename, 'r') as filePointer:
+    with open(filename, 'w') as filePointer:
         return json.dump(database, filePointer)
 
 # Demonstration Functions #
 
-def doInteractiveChannelSubscribe(database):
+def doInteractiveChannelSubscribe(database, getHttpContent=req.get):
     query = input("Enter channel to search for: ")
-    resultList = getChannelQueryResults(query)
+    resultList = getChannelQueryResults(query, getHttpContent = getHttpContent)
     print(f"Going through search results for '{query}'...\n")
     for i, result in enumerate(resultList):
         print(f"Search result {i+1}:\nTitle: {result.title}\nChannel ID: {result.channelId}\nRSS feed: {getRssAddressFromChannelId(result.channelId)}\n")
         if doYnQuery('Add this channel to subscriptions?'):
-            addSubscriptionsToDatabase(database, result.channelId, result.title, refresh=True)
+            addSubscriptionsToDatabase(database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent)
             break
+    outputDatabaseToFile(database, DATABASE_PATH)
 
 def doShowSubscriptions(database):
     print("\nYou are subscribed to these channels:\n")
     for title in database['title to id']:
         print(f"title: {title}\nid: {database['title to id'][title]}\n")
 
-def doInteractivePlayVideo(database):
+def doInteractivePlayVideo(database, useTor):
     channelMenuList = list(database['title to id'])
     print("in here")
     channelTitle = channelMenuList[doSelectionQuery("Which channel do you want to watch a video from?", channelMenuList)]
@@ -241,14 +251,26 @@ def doInteractivePlayVideo(database):
     videos = database['feeds'][channelId]
     videosMenuList = [video['title'] for video in videos]
     videoUrl = videos[doSelectionQuery("Which video do you want to watch?", videosMenuList)]['link']
-    openUrlInMpv(videoUrl)
+    openUrlInMpv(videoUrl, useTor=useTor)
 
 def doShowDatabase(database):
     print(getDatabaseString(database))
 
+def doRefreshSubscriptions(database, getHttpContent = req.get):
+    channelIdList = list(database['id to title'])
+    refreshSubscriptionsByChannelId(channelIdList, database)
+    outputDatabaseToFile(database, DATABASE_PATH)
+
 # main section (demonstration of tools)
 
 if __name__ == '__main__':
+    if not os.path.isdir(YOUTUBE_RSS_DIR):
+        os.mkdir(YOUTUBE_RSS_DIR)
+    if os.path.isfile(DATABASE_PATH):
+        database = parseDatabaseFile(DATABASE_PATH)
+    else:
+        database = initiateYouTubeRssDatabase()
+
     print("SimonDaNinja/youtube_rss  Copyright (C) 2021  Simon Liljestrand\n" +
     "This program comes with ABSOLUTELY NO WARRANTY.\n" +
     "This is free software, and you are welcome to redistribute it\n" +
@@ -260,13 +282,13 @@ if __name__ == '__main__':
     else:
         getHttpContent = req.get
 
-    database = initiateYouTubeRssDatabase()
 
     menuOptions =   {
                         "Subscribe to new channel"  : doInteractiveChannelSubscribe,
                         "Show subscriptions"        : doShowSubscriptions,
                         "Play video"                : doInteractivePlayVideo,
                         "Show database"             : doShowDatabase,
+                        "Refresh subscriptions"     : doRefreshSubscriptions,
                         "Quit"                      : None
                     }
 
@@ -275,6 +297,17 @@ if __name__ == '__main__':
     while True:
         choice = menuList[doSelectionQuery("What do you want to do?", menuList)]
         chosenFunction = menuOptions[choice]
+
+        # handle special cases #
+        # if user wants to quit:
         if chosenFunction is None:
             break
-        chosenFunction(database)
+        # if function needs an http get method
+        elif chosenFunction in [doInteractiveChannelSubscribe, doRefreshSubscriptions]:
+            chosenFunction(database, getHttpContent)
+        # if function needs to know if Tor is used
+        elif chosenFunction in [doInteractivePlayVideo]:
+            chosenFunction(database, useTor)
+        # default case: choice only needs to use database
+        else:
+            chosenFunction(database)
