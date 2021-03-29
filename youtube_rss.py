@@ -269,8 +269,8 @@ def openUrlInMpv(url, useTor=False, maxResolution=1080):
             mpvProcess.wait()
             result = mpvProcess.poll()
         except KeyboardInterrupt:
-            mpvProcess.wait()
             mpvProcess.kill()
+            mpvProcess.wait()
             result = mpvProcess.poll()
             pass
         if result in [0,4] or not doYnQuery(f"Something went wrong when playing the video (exit code: {result}). Try again?", clear=False):
