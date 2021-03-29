@@ -110,9 +110,14 @@ def escapeQuery(query):
 #use this function to get html for a youtube channel query
 def getChannelQueryHtml(query, getHttpContent = req.get):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAg%253D%253D'
-    response = getHttpContent(url)
+    try:
+        response = getHttpContent(url)
+    except requests.exceptions.ConnectionError:
+        return None
     if response.text is not None:
         return response.text
+    else:
+        return None
 
 # use this function to ask an interactive yes/no question to the user
 def doYnQuery(query):
@@ -143,7 +148,10 @@ def doSelectionQuery(query, options, default=None, indexChoice=False):
 
 # if you have a channel url, you can use this function to extract the rss address
 def getRssAddressFromChannelUrl(url, getHttpContent = req.get):
-    response = getHttpContent(url)
+    try:
+        response = getHttpContent(url)
+    except requests.exceptions.ConnectionError:
+        return None
     if response.text is not None:
         htmlContent = response.text
         parser = RssAddressParser()
@@ -169,7 +177,10 @@ def getChannelQueryResults(query, getHttpContent = req.get):
 # use this function to get rss entries from channel id
 def getRssEntriesFromChannelId(channelId, getHttpContent = req.get):
     rssAddress = getRssAddressFromChannelId(channelId)
-    response = getHttpContent(rssAddress)
+    try:
+        response = getHttpContent(rssAddress)
+    except requests.exceptions.ConnectionError:
+        return None
     if response.text is not None:
         rssContent = response.text
         entries = feedparser.parse(rssContent)['entries']
