@@ -391,59 +391,59 @@ def doRefreshSubscriptions(database, getHttpContent = req.get):
 # main section (demonstration of tools)
 
 if __name__ == '__main__':
-    doClear()
-    if not os.path.isdir(YOUTUBE_RSS_DIR):
-        os.mkdir(YOUTUBE_RSS_DIR)
-    if os.path.isfile(DATABASE_PATH):
-        database = parseDatabaseFile(DATABASE_PATH)
-    else:
-        database = initiateYouTubeRssDatabase()
+    try:
+        doClear()
+        if not os.path.isdir(YOUTUBE_RSS_DIR):
+            os.mkdir(YOUTUBE_RSS_DIR)
+        if os.path.isfile(DATABASE_PATH):
+            database = parseDatabaseFile(DATABASE_PATH)
+        else:
+            database = initiateYouTubeRssDatabase()
 
-    print("SimonDaNinja/youtube_rss  Copyright (C) 2021  Simon Liljestrand\n" +
-    "This program comes with ABSOLUTELY NO WARRANTY.\n" +
-    "This is free software, and you are welcome to redistribute it\n" +
-    "under certain conditions.\n")
+        print("SimonDaNinja/youtube_rss  Copyright (C) 2021  Simon Liljestrand\n\n" +
+        "This program comes with ABSOLUTELY NO WARRANTY.\n\n" +
+        "This is free software, and you are welcome to redistribute it " +
+        "under certain conditions.\n\n\n")
 
-    useTor = doYnQuery("Do you want to use tor?", clear=False)
-    if useTor:
-        getHttpContent = getHttpResponseUsingSocks5
-    else:
-        getHttpContent = req.get
+        useTor = doYnQuery("Do you want to use tor?", clear=False)
+        if useTor:
+            getHttpContent = getHttpResponseUsingSocks5
+        else:
+            getHttpContent = req.get
 
 
-    menuOptions =   {
-                        "Subscribe to new channel"  : doInteractiveChannelSubscribe,
-                        "Unsubscribe from channel"  : doInteractiveChannelUnsubscribe,
-                        "Show subscriptions"        : doShowSubscriptions,
-                        "Play video"                : doInteractivePlayVideo,
-                        "Refresh subscriptions"     : doRefreshSubscriptions,
-                        "Show database"             : doShowDatabase,
-                        "Quit"                      : None
-                    }
+        menuOptions =   {
+                            "Subscribe to new channel"  : doInteractiveChannelSubscribe,
+                            "Unsubscribe from channel"  : doInteractiveChannelUnsubscribe,
+                            "Show subscriptions"        : doShowSubscriptions,
+                            "Play video"                : doInteractivePlayVideo,
+                            "Refresh subscriptions"     : doRefreshSubscriptions,
+                            "Show database"             : doShowDatabase,
+                            "Quit"                      : None
+                        }
 
-    menuList = list(menuOptions)
+        menuList = list(menuOptions)
 
-    while True:
-        try:
+        while True:
             choice = doSelectionQuery("What do you want to do?", menuList)
-        except KeyboardInterrupt:
-            print("")
-            exit()
-        chosenFunction = menuOptions[choice]
+            chosenFunction = menuOptions[choice]
 
-        # handle special cases #
-        # if user wants to quit:
-        try:
-            if chosenFunction is None:
-                exit()
-            # if function needs an http get method
-            elif chosenFunction in [doInteractiveChannelSubscribe, doRefreshSubscriptions]:
-                chosenFunction(database, getHttpContent)
-            # if function needs to know if Tor is used
-            elif chosenFunction in [doInteractivePlayVideo]:
-                chosenFunction(database, useTor)
-            # default case: choice only needs to use database
-            else:
-                chosenFunction(database)
-        except KeyboardInterrupt:
-            pass
+            # handle special cases #
+            # if user wants to quit:
+            try:
+                if chosenFunction is None:
+                    exit()
+                # if function needs an http get method
+                elif chosenFunction in [doInteractiveChannelSubscribe, doRefreshSubscriptions]:
+                    chosenFunction(database, getHttpContent)
+                # if function needs to know if Tor is used
+                elif chosenFunction in [doInteractivePlayVideo]:
+                    chosenFunction(database, useTor)
+                # default case: choice only needs to use database
+                else:
+                    chosenFunction(database)
+            except KeyboardInterrupt:
+                pass
+    except KeyboardInterrupt:
+        print("")
+        exit()
