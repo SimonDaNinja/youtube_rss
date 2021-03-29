@@ -129,12 +129,11 @@ def doYnQuery(query):
 def doSelectionQuery(query, options, default=None, indexChoice=False):
     query += f' [1-{len(options)}] '
     if default is not None:
-        defaultIndex = options.index(default)
-        query += f'({defaultIndex+1}) '
+        query += f'({default}) '
     while True:
         ans = input("\n" + "\n".join([f"{i+1}: {option}" for i, option in enumerate(options)] + ['\n' + query]))
         if ans == '' and default is not None:
-            return defaultIndex if indexChoice else default
+            return options.index(default) if indexChoice else default
         elif not ans.isdigit() or int(ans)-1 not in range(len(query)):
             print('invalid response!')
         else:
@@ -227,14 +226,21 @@ def refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent=req.
 
 def openUrlInMpv(url, useTor=False, maxResolution=1080):
     while True:
-        command = []
-        if useTor:
-            command.append('torsocks')
-        command.append('mpv')
-        command.append(url)
-        mpvProcess = subprocess.Popen(command, stdout = subprocess.DEVNULL, stderr = subprocess.STDOUT)
-        mpvProcess.wait()
-        result = mpvProcess.poll()
+        try:
+            command = []
+            if useTor:
+                command.append('torsocks')
+                command.append('-i')
+            command.append('mpv')
+            command.append(url)
+            mpvProcess = subprocess.Popen(command, stdout = subprocess.DEVNULL, stderr = subprocess.STDOUT)
+            mpvProcess.wait()
+            result = mpvProcess.poll()
+        except KeyboardInterrupt:
+            mpvProcess.wait()
+            mpvProcess.kill()
+            result = mpvProcess.poll()
+            pass
         if result in [0,4] or not doYnQuery(f"Something went wrong when playing the video (exit code: {result}). Try again?"):
             break
 
