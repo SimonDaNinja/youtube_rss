@@ -95,6 +95,12 @@ class ChannelQueryObject:
 
 # help functions #
 
+def doClear():
+    os.system('clear')
+
+def doPressEnterToContinue():
+    input('\npress enter to continue')
+
 # use this function to convert the attrs parameter used in HTMLParser into a dict
 def attrsToDict(attrs):
     attrDict = {}
@@ -112,7 +118,7 @@ def getChannelQueryHtml(query, getHttpContent = req.get):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAg%253D%253D'
     try:
         response = getHttpContent(url)
-    except requests.exceptions.ConnectionError:
+    except req.exceptions.ConnectionError:
         return None
     if response.text is not None:
         return response.text
@@ -120,29 +126,37 @@ def getChannelQueryHtml(query, getHttpContent = req.get):
         return None
 
 # use this function to ask an interactive yes/no question to the user
-def doYnQuery(query):
+def doYnQuery(query, default=None, clear=True):
+    verdict = False
+    if clear:
+        doClear()
     while True:
         yn = input(query + ' [y/n] ').lower()
-        if yn not in ['y', 'n']:
+        if yn not in ['y', 'n'] if default is None else yn not in ['y', 'n', '']:
             print('invalid response!')
         else:
             break
-    if yn == 'y':
-        return True
-    return False
+    if yn == 'y' or (yn == '' and default == 'y'):
+        verdict = True
+    return verdict
 
-def doSelectionQuery(query, options, default=None, indexChoice=False):
+def doSelectionQuery(query, options, default=None, indexChoice=False, clear=True):
+    if clear:
+        doClear()
     query += f' [1-{len(options)}] '
     if default is not None:
         query += f'({default}) '
     while True:
-        ans = input("\n" + "\n".join([f"{i+1}: {option}" for i, option in enumerate(options)] + ['\n' + query]))
+        ans = input("\n".join([f"{i+1}: {option}" for i, option in enumerate(options)] + ['\n' + query]))
         if ans == '' and default is not None:
-            return options.index(default) if indexChoice else default
+            selection = options.index(default) if indexChoice else default
+            break
         elif not ans.isdigit() or int(ans)-1 not in range(len(query)):
             print('invalid response!')
         else:
-            return int(ans)-1 if indexChoice else options[int(ans)-1]
+            selection = int(ans)-1 if indexChoice else options[int(ans)-1]
+            break
+    return selection
 
 # central functions #
 
@@ -150,7 +164,7 @@ def doSelectionQuery(query, options, default=None, indexChoice=False):
 def getRssAddressFromChannelUrl(url, getHttpContent = req.get):
     try:
         response = getHttpContent(url)
-    except requests.exceptions.ConnectionError:
+    except req.exceptions.ConnectionError:
         return None
     if response.text is not None:
         htmlContent = response.text
@@ -179,7 +193,7 @@ def getRssEntriesFromChannelId(channelId, getHttpContent = req.get):
     rssAddress = getRssAddressFromChannelId(channelId)
     try:
         response = getHttpContent(rssAddress)
-    except requests.exceptions.ConnectionError:
+    except req.exceptions.ConnectionError:
         return None
     if response.text is not None:
         rssContent = response.text
@@ -198,12 +212,14 @@ def initiateYouTubeRssDatabase():
 def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False, getHttpContent=req.get):
     if channelId in database['feeds']:
         print("\nAlready subscribed to this channel!")
-        return
+        doPressEnterToContinue()
+        return True
     database['feeds'][channelId] = []
     database['id to title'][channelId] = channelTitle
     database['title to id'][channelTitle] = channelId
     if refresh:
-        refreshSubscriptionsByChannelId([channelId], database, getHttpContent=getHttpContent)
+        return refreshSubscriptionsByChannelId([channelId], database, getHttpContent=getHttpContent)
+    return True
 
 def removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle):
     if channelTitle not in database['title to id']:
@@ -252,7 +268,7 @@ def openUrlInMpv(url, useTor=False, maxResolution=1080):
             mpvProcess.kill()
             result = mpvProcess.poll()
             pass
-        if result in [0,4] or not doYnQuery(f"Something went wrong when playing the video (exit code: {result}). Try again?"):
+        if result in [0,4] or not doYnQuery(f"Something went wrong when playing the video (exit code: {result}). Try again?", clear=False):
             break
 
 def getRelevantDictFromFeedParserDict(feedparserDict):
@@ -281,43 +297,57 @@ def outputDatabaseToFile(database, filename):
 # Demonstration Functions #
 
 def doInteractiveChannelSubscribe(database, getHttpContent=req.get):
+    doClear()
     query = input("Enter channel to search for: ")
     querying = True
     while querying:
         resultList = getChannelQueryResults(query, getHttpContent = getHttpContent)
         if resultList is not None:
-            print(f"Going through search results for '{query}'...\n")
             for i, result in enumerate(resultList):
-                print(f"Search result {i+1}:\nTitle: {result.title}\nChannel ID: {result.channelId}\nRSS feed: {getRssAddressFromChannelId(result.channelId)}\n")
-                if doYnQuery('Add this channel to subscriptions?'):
-                    addSubscriptionToDatabase(database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent)
+                ynQuery = f"Going through search results for '{query}'...\n"
+                ynQuery += f"Search result {i+1}:\nTitle: {result.title}\nChannel ID: {result.channelId}\n"
+                ynQuery += '\nAdd this channel to subscriptions?'
+                if doYnQuery(ynQuery):
+                    refreshing = True
+                    while refreshing:
+                        if not addSubscriptionToDatabase(database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent):
+                            if not doYnQuery("Something went wrong with the connection. Try again?"):
+                                querying = False
+                                refreshing = False
+                        else:
+                            refreshing = False
                     break
             outputDatabaseToFile(database, DATABASE_PATH)
             querying = False
         else:
-            if not doYnQuery("Something went wrong with the connection. Try again?"):
+            if not doYnQuery("Something went wrong with the connection. Try again?", clear=False):
                 querying = False
 
 def doInteractiveChannelUnsubscribe(database):
+    doClear()
     channelTitleList = [key for key in database['title to id']]
     if not channelTitleList:
-        print('\nYou are not subscribed to any channels')
+        print('You are not subscribed to any channels')
+        doPressEnterToContinue()
         return
     channelTitle = doSelectionQuery("Which channel do you want to unsubscribe from?", channelTitleList)
     removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
 
 def doShowSubscriptions(database):
+    doClear()
     if not database['title to id']:
-        print('\nYou are not subscribed to any channels')
-        return
-    print("\nYou are subscribed to these channels:\n")
-    for title in database['title to id']:
-        print(f"title: {title}\nid: {database['title to id'][title]}")
+        print('You are not subscribed to any channels')
+    else:
+        print("You are subscribed to these channels:")
+        for title in database['title to id']:
+            print(f"\ntitle: {title}\nid: {database['title to id'][title]}")
+    doPressEnterToContinue()
 
 def doInteractivePlayVideo(database, useTor):
     channelMenuList = list(database['title to id'])
     if not channelMenuList:
         print('\nYou are not subscribed to any channels')
+        doPressEnterToContinue()
         return
     channelTitle = doSelectionQuery("Which channel do you want to watch a video from?", channelMenuList)
     channelId = database['title to id'][channelTitle]
@@ -331,13 +361,14 @@ def doInteractivePlayVideo(database, useTor):
 
 def doShowDatabase(database):
     print(getDatabaseString(database))
+    doPressEnterToContinue()
 
 def doRefreshSubscriptions(database, getHttpContent = req.get):
     channelIdList = list(database['id to title'])
     refreshing = True
     while refreshing:
         if not refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent = getHttpContent):
-            if not doYnQuery("Something went wrong with the connection. Try again?"):
+            if not doYnQuery("Something went wrong with the connection. Try again?", clear=False):
                 refreshing = False
         else:
             refreshing = False
@@ -346,6 +377,7 @@ def doRefreshSubscriptions(database, getHttpContent = req.get):
 # main section (demonstration of tools)
 
 if __name__ == '__main__':
+    doClear()
     if not os.path.isdir(YOUTUBE_RSS_DIR):
         os.mkdir(YOUTUBE_RSS_DIR)
     if os.path.isfile(DATABASE_PATH):
@@ -353,12 +385,12 @@ if __name__ == '__main__':
     else:
         database = initiateYouTubeRssDatabase()
 
-    print("\nSimonDaNinja/youtube_rss  Copyright (C) 2021  Simon Liljestrand\n" +
+    print("SimonDaNinja/youtube_rss  Copyright (C) 2021  Simon Liljestrand\n" +
     "This program comes with ABSOLUTELY NO WARRANTY.\n" +
     "This is free software, and you are welcome to redistribute it\n" +
     "under certain conditions.\n")
 
-    useTor = doYnQuery("Do you want to use tor?")
+    useTor = doYnQuery("Do you want to use tor?", clear=False)
     if useTor:
         getHttpContent = getHttpResponseUsingSocks5
     else:
