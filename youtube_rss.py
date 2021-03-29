@@ -245,7 +245,12 @@ def refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent=req.
             remoteFeed.reverse()
             for entry in remoteFeed:
                 filteredEntry = getRelevantDictFromFeedParserDict(entry)
-                if filteredEntry not in localFeed:
+                filteredEntryIsNew = True
+                for localEntry in localFeed:
+                    if compareFeedDicts(localEntry, filteredEntry):
+                        filteredEntryIsNew = False
+                        break
+                if filteredEntryIsNew:
                     localFeed.insert(0, filteredEntry)
             return True
         else:
@@ -270,13 +275,18 @@ def openUrlInMpv(url, useTor=False, maxResolution=1080):
             pass
         if result in [0,4] or not doYnQuery(f"Something went wrong when playing the video (exit code: {result}). Try again?", clear=False):
             break
+    return result in [0,4]
+
+def compareFeedDicts(lhs,rhs):
+    return lhs['id'] == rhs['id']
 
 def getRelevantDictFromFeedParserDict(feedparserDict):
     outputDict =    {
                         'id'        : feedparserDict['id'],
                         'link'      : feedparserDict['link'],
                         'title'     : feedparserDict['title'],
-                        'thumbnail' : feedparserDict['media_thumbnail'][0]['url']
+                        'thumbnail' : feedparserDict['media_thumbnail'][0]['url'],
+                        'seen'      : False
                     }
     return outputDict
 
@@ -352,12 +362,16 @@ def doInteractivePlayVideo(database, useTor):
     channelTitle = doSelectionQuery("Which channel do you want to watch a video from?", channelMenuList)
     channelId = database['title to id'][channelTitle]
     videos = database['feeds'][channelId]
-    videosMenuList = [video['title'] for video in videos]
-    videoUrl = videos[doSelectionQuery("Which video do you want to watch?", videosMenuList, indexChoice=True)]['link']
+    videosMenuList = [video['title'] + (' (unseen!)' if not video['seen'] else '') for video in videos]
+    video = videos[doSelectionQuery("Which video do you want to watch?", videosMenuList, indexChoice=True)]
+    videoUrl = video['link']
     resolutionMenuList = [1080, 720, 480, 240]
     defaultMaxResolution = 480 if useTor else 1080
     maxResolution = doSelectionQuery("Which maximum resolution do you want to use?", resolutionMenuList, defaultMaxResolution)
-    openUrlInMpv(videoUrl, useTor=useTor, maxResolution=maxResolution)
+    result = openUrlInMpv(videoUrl, useTor=useTor, maxResolution=maxResolution)
+    if not video['seen']:
+        video['seen'] = result
+        outputDatabaseToFile(database, DATABASE_PATH)
 
 def doShowDatabase(database):
     print(getDatabaseString(database))
@@ -402,27 +416,34 @@ if __name__ == '__main__':
                         "Unsubscribe from channel"  : doInteractiveChannelUnsubscribe,
                         "Show subscriptions"        : doShowSubscriptions,
                         "Play video"                : doInteractivePlayVideo,
-                        "Show database"             : doShowDatabase,
                         "Refresh subscriptions"     : doRefreshSubscriptions,
+                        "Show database"             : doShowDatabase,
                         "Quit"                      : None
                     }
 
     menuList = list(menuOptions)
 
     while True:
-        choice = doSelectionQuery("What do you want to do?", menuList)
+        try:
+            choice = doSelectionQuery("What do you want to do?", menuList)
+        except KeyboardInterrupt:
+            print("")
+            exit()
         chosenFunction = menuOptions[choice]
 
         # handle special cases #
         # if user wants to quit:
-        if chosenFunction is None:
-            break
-        # if function needs an http get method
-        elif chosenFunction in [doInteractiveChannelSubscribe, doRefreshSubscriptions]:
-            chosenFunction(database, getHttpContent)
-        # if function needs to know if Tor is used
-        elif chosenFunction in [doInteractivePlayVideo]:
-            chosenFunction(database, useTor)
-        # default case: choice only needs to use database
-        else:
-            chosenFunction(database)
+        try:
+            if chosenFunction is None:
+                exit()
+            # if function needs an http get method
+            elif chosenFunction in [doInteractiveChannelSubscribe, doRefreshSubscriptions]:
+                chosenFunction(database, getHttpContent)
+            # if function needs to know if Tor is used
+            elif chosenFunction in [doInteractivePlayVideo]:
+                chosenFunction(database, useTor)
+            # default case: choice only needs to use database
+            else:
+                chosenFunction(database)
+        except KeyboardInterrupt:
+            pass
