@@ -126,13 +126,19 @@ def doYnQuery(query):
         return True
     return False
 
-def doSelectionQuery(query, options):
+def doSelectionQuery(query, options, default=None, indexChoice=False):
+    query += f' [1-{len(options)}] '
+    if default is not None:
+        defaultIndex = options.index(default)
+        query += f'({defaultIndex+1}) '
     while True:
-        ans = input("\n" + "\n".join([f"{i+1}: {option}" for i, option in enumerate(options)] + ['\n' + query + f' (1-{len(options)}) ']))
-        if not ans.isdigit() or int(ans)-1 not in range(len(query)):
+        ans = input("\n" + "\n".join([f"{i+1}: {option}" for i, option in enumerate(options)] + ['\n' + query]))
+        if ans == '' and default is not None:
+            return defaultIndex if indexChoice else default
+        elif not ans.isdigit() or int(ans)-1 not in range(len(query)):
             print('invalid response!')
         else:
-            return int(ans)-1
+            return int(ans)-1 if indexChoice else options[int(ans)-1]
 
 # central functions #
 
@@ -219,7 +225,7 @@ def refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent=req.
         else:
             return False
 
-def openUrlInMpv(url, useTor=False):
+def openUrlInMpv(url, useTor=False, maxResolution=1080):
     while True:
         command = []
         if useTor:
@@ -280,7 +286,7 @@ def doInteractiveChannelUnsubscribe(database):
     if not channelTitleList:
         print('\nYou are not subscribed to any channels')
         return
-    channelTitle = channelTitleList[doSelectionQuery("Which channel do you want to unsubscribe from?", channelTitleList)]
+    channelTitle = doSelectionQuery("Which channel do you want to unsubscribe from?", channelTitleList)
     removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
 
 def doShowSubscriptions(database):
@@ -296,12 +302,15 @@ def doInteractivePlayVideo(database, useTor):
     if not channelMenuList:
         print('\nYou are not subscribed to any channels')
         return
-    channelTitle = channelMenuList[doSelectionQuery("Which channel do you want to watch a video from?", channelMenuList)]
+    channelTitle = doSelectionQuery("Which channel do you want to watch a video from?", channelMenuList)
     channelId = database['title to id'][channelTitle]
     videos = database['feeds'][channelId]
     videosMenuList = [video['title'] for video in videos]
-    videoUrl = videos[doSelectionQuery("Which video do you want to watch?", videosMenuList)]['link']
-    openUrlInMpv(videoUrl, useTor=useTor)
+    videoUrl = videos[doSelectionQuery("Which video do you want to watch?", videosMenuList, indexChoice=True)]['link']
+    resolutionMenuList = [1080, 720, 480, 240]
+    defaultMaxResolution = 480 if useTor else 1080
+    maxResolution = doSelectionQuery("Which maximum resolution do you want to use?", resolutionMenuList, defaultMaxResolution)
+    openUrlInMpv(videoUrl, useTor=useTor, maxResolution=maxResolution)
 
 def doShowDatabase(database):
     print(getDatabaseString(database))
@@ -352,7 +361,7 @@ if __name__ == '__main__':
     menuList = list(menuOptions)
 
     while True:
-        choice = menuList[doSelectionQuery("What do you want to do?", menuList)]
+        choice = doSelectionQuery("What do you want to do?", menuList)
         chosenFunction = menuOptions[choice]
 
         # handle special cases #
