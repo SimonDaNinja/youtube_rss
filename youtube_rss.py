@@ -25,6 +25,7 @@ import requests as req
 import re
 import feedparser
 import json
+import curses
 try:
     from tor_requests.tor_requests import getHttpResponseUsingSocks5
 except:
@@ -40,6 +41,10 @@ import os
 HOME = os.environ.get('HOME')
 YOUTUBE_RSS_DIR = '/'.join([HOME,'.youtube_rss'])
 DATABASE_PATH  = '/'.join([YOUTUBE_RSS_DIR, 'database'])
+
+HIGHLIGHTED = 1
+NOT_HIGHLIGHTED = 2
+
 
 ###########
 # classes #
@@ -89,6 +94,9 @@ class ChannelQueryObject:
         self.channelId = channelId
         self.title     = title
 
+    def __str__(self):
+        return f"{self.title}  --  (channel ID {self.channelId})"
+
 #############
 # functions #
 #############
@@ -125,6 +133,53 @@ def getChannelQueryHtml(query, getHttpContent = req.get):
     else:
         return None
 
+def printMenu(query, menu, stdscr, choiceIndex):
+    stdscr.clear()
+    height, width = stdscr.getmaxyx()
+    screenCenterX = width//2
+    screenCenterY = height//2
+    nRowsToPrint = (len(menu)+2)//2
+
+    if nRowsToPrint > height:
+        ySelected = screenCenterY - nRowsToPrint + choiceIndex + 2
+        offset = (ySelected - screenCenterY)
+    else:
+        offset = 0
+
+    x = screenCenterX-len(query)//2
+    y = screenCenterY-nRowsToPrint - offset
+    if y >0 and y<height:
+        stdscr.addstr(y, x, query)
+    for i, item in enumerate(menu):
+        itemString = str(item)
+        attr = curses.color_pair(HIGHLIGHTED if i == choiceIndex else NOT_HIGHLIGHTED)
+        stdscr.attron(attr)
+        x = screenCenterX - len(itemString)//2
+        y = screenCenterY - nRowsToPrint + i + 2 - offset
+        if y >0 and y<height:
+            stdscr.addstr(y, x, itemString)
+        stdscr.attroff(attr)
+    stdscr.refresh()
+
+def doYnQueryNcurses(stdscr, query):
+    choiceIndex = 0
+    return doSelectionQueryNcurses(stdscr, query, ['yes','no'])=='yes'
+
+def doSelectionQueryNcurses(stdscr, query, options, indexChoice=False):
+    curses.curs_set(0)
+    curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
+    choiceIndex = 0
+    while True:
+        printMenu(query, options, stdscr, choiceIndex)
+        key = stdscr.getch()
+        if key == curses.KEY_UP:
+            choiceIndex = max(choiceIndex-1, 0)
+        elif key == curses.KEY_DOWN:
+            choiceIndex = min(choiceIndex+1, len(options)-1)
+        elif key == curses.KEY_ENTER or key in [10, 13]:
+            return choiceIndex if indexChoice else options[choiceIndex]
+    
 # use this function to ask an interactive yes/no question to the user
 def doYnQuery(query, default=None, clear=True):
     verdict = False
@@ -211,6 +266,7 @@ def initiateYouTubeRssDatabase():
 
 def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False, getHttpContent=req.get):
     if channelId in database['feeds']:
+        doClear()
         print("\nAlready subscribed to this channel!")
         doPressEnterToContinue()
         return True
@@ -273,7 +329,7 @@ def openUrlInMpv(url, useTor=False, maxResolution=1080):
             mpvProcess.wait()
             result = mpvProcess.poll()
             pass
-        if result in [0,4] or not doYnQuery(f"Something went wrong when playing the video (exit code: {result}). Try again?", clear=False):
+        if result in [0,4] or not curses.wrapper(doYnQueryNcurses, f"Something went wrong when playing the video (exit code: {result}). Try again?"):
             break
     return result in [0,4]
 
@@ -309,38 +365,35 @@ def outputDatabaseToFile(database, filename):
 def doInteractiveChannelSubscribe(database, getHttpContent=req.get):
     doClear()
     query = input("Enter channel to search for: ")
+    doClear()
     querying = True
     while querying:
         resultList = getChannelQueryResults(query, getHttpContent = getHttpContent)
         if resultList is not None:
-            for i, result in enumerate(resultList):
-                ynQuery = f"Going through search results for '{query}'...\n"
-                ynQuery += f"Search result {i+1}:\nTitle: {result.title}\nChannel ID: {result.channelId}\n"
-                ynQuery += '\nAdd this channel to subscriptions?'
-                if doYnQuery(ynQuery):
-                    refreshing = True
-                    while refreshing:
-                        if not addSubscriptionToDatabase(database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent):
-                            if not doYnQuery("Something went wrong with the connection. Try again?"):
-                                querying = False
-                                refreshing = False
-                        else:
-                            refreshing = False
-                    break
+            result = curses.wrapper(doSelectionQueryNcurses, f"search results for {query}, choose which channel to supscribe to", resultList)
+            refreshing = True
+            while refreshing:
+                if not addSubscriptionToDatabase(database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent):
+                    if not curses.wrapper(doYnQueryNcurses,"Something went wrong with the connection. Try again?"):
+                        querying = False
+                        refreshing = False
+                else:
+                    refreshing = False
             outputDatabaseToFile(database, DATABASE_PATH)
             querying = False
         else:
-            if not doYnQuery("Something went wrong with the connection. Try again?", clear=False):
+            if not curses.wrapper(doYnQueryNcurses,"Something went wrong with the connection. Try again?"):
                 querying = False
 
 def doInteractiveChannelUnsubscribe(database):
     doClear()
     channelTitleList = [key for key in database['title to id']]
     if not channelTitleList:
+        doClear()
         print('You are not subscribed to any channels')
         doPressEnterToContinue()
         return
-    channelTitle = doSelectionQuery("Which channel do you want to unsubscribe from?", channelTitleList)
+    channelTitle = curses.wrapper(doSelectionQueryNcurses,"Which channel do you want to unsubscribe from?", channelTitleList)
     removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
 
 def doShowSubscriptions(database):
@@ -355,19 +408,19 @@ def doShowSubscriptions(database):
 
 def doInteractivePlayVideo(database, useTor):
     channelMenuList = list(database['title to id'])
+    doClear()
     if not channelMenuList:
         print('\nYou are not subscribed to any channels')
         doPressEnterToContinue()
         return
-    channelTitle = doSelectionQuery("Which channel do you want to watch a video from?", channelMenuList)
+    channelTitle = curses.wrapper(doSelectionQueryNcurses,"Which channel do you want to watch a video from?", channelMenuList)
     channelId = database['title to id'][channelTitle]
     videos = database['feeds'][channelId]
     videosMenuList = [video['title'] + (' (unseen!)' if not video['seen'] else '') for video in videos]
-    video = videos[doSelectionQuery("Which video do you want to watch?", videosMenuList, indexChoice=True)]
+    video = videos[curses.wrapper(doSelectionQueryNcurses,"Which video do you want to watch?", videosMenuList, indexChoice=True)]
     videoUrl = video['link']
     resolutionMenuList = [1080, 720, 480, 240]
-    defaultMaxResolution = 480 if useTor else 1080
-    maxResolution = doSelectionQuery("Which maximum resolution do you want to use?", resolutionMenuList, defaultMaxResolution)
+    maxResolution = curses.wrapper(doSelectionQueryNcurses,"Which maximum resolution do you want to use?", resolutionMenuList)
     result = openUrlInMpv(videoUrl, useTor=useTor, maxResolution=maxResolution)
     if not video['seen']:
         video['seen'] = result
@@ -382,7 +435,7 @@ def doRefreshSubscriptions(database, getHttpContent = req.get):
     refreshing = True
     while refreshing:
         if not refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent = getHttpContent):
-            if not doYnQuery("Something went wrong with the connection. Try again?", clear=False):
+            if not curses.wrapper(doYnQueryNcurses,"Something went wrong with the connection. Try again?"):
                 refreshing = False
         else:
             refreshing = False
@@ -400,32 +453,24 @@ if __name__ == '__main__':
         else:
             database = initiateYouTubeRssDatabase()
 
-        print("SimonDaNinja/youtube_rss  Copyright (C) 2021  Simon Liljestrand\n\n" +
-        "This program comes with ABSOLUTELY NO WARRANTY.\n\n" +
-        "This is free software, and you are welcome to redistribute it " +
-        "under certain conditions.\n\n\n")
-
-        useTor = doYnQuery("Do you want to use tor?", clear=False)
+        useTor = curses.wrapper(doYnQueryNcurses,"Do you want to use tor?")
         if useTor:
             getHttpContent = getHttpResponseUsingSocks5
         else:
             getHttpContent = req.get
 
-
         menuOptions =   {
                             "Subscribe to new channel"  : doInteractiveChannelSubscribe,
                             "Unsubscribe from channel"  : doInteractiveChannelUnsubscribe,
-                            "Show subscriptions"        : doShowSubscriptions,
-                            "Play video"                : doInteractivePlayVideo,
+                            "Browse subscriptions"      : doInteractivePlayVideo,
                             "Refresh subscriptions"     : doRefreshSubscriptions,
-                            "Show database"             : doShowDatabase,
                             "Quit"                      : None
                         }
 
         menuList = list(menuOptions)
 
         while True:
-            choice = doSelectionQuery("What do you want to do?", menuList)
+            choice = curses.wrapper(doSelectionQueryNcurses,"What do you want to do?", menuList)
             chosenFunction = menuOptions[choice]
 
             # handle special cases #
