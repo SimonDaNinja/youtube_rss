@@ -27,7 +27,6 @@ import feedparser
 import json
 try:
     from tor_requests.tor_requests import getHttpResponseUsingSocks5
-    from tor_requests.tor_requests import generateNewSocks5Auth
 except:
     print("you probably haven't run the command\ngit submodule update --init --recursive")
     exit()
@@ -222,10 +221,10 @@ def refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent=req.
 
 def openUrlInMpv(url, useTor=False):
     while True:
-        command = ['mpv']
+        command = []
         if useTor:
-            username, password = generateNewSocks5Auth()
-            command.append(f'--ytdl-raw-options=proxy=[socks5://{username}:{password}@127.0.0.1:9050]')
+            command.append('torsocks')
+        command.append('mpv')
         command.append(url)
         mpvProcess = subprocess.Popen(command, stdout = subprocess.DEVNULL, stderr = subprocess.STDOUT)
         mpvProcess.wait()
