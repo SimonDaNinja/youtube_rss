@@ -180,12 +180,30 @@ def initiateYouTubeRssDatabase():
     database['title to id'] = {}
     return database
 
-def addSubscriptionsToDatabase(database, channelId, channelTitle, refresh=False, getHttpContent=req.get):
+def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False, getHttpContent=req.get):
+    if channelId in database['feeds']:
+        print("\nAlready subscribed to this channel!")
+        return
     database['feeds'][channelId] = []
     database['id to title'][channelId] = channelTitle
     database['title to id'][channelTitle] = channelId
     if refresh:
         refreshSubscriptionsByChannelId([channelId], database, getHttpContent=getHttpContent)
+
+def removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle):
+    if channelTitle not in database['title to id']:
+        return
+    channelId = database['title to id'][channelTitle]
+    removeSubscriptionFromDatabaseByChannelId(database, channelId)
+
+def removeSubscriptionFromDatabaseByChannelId(database, channelId):
+    if channelId not in database['id to title']:
+        return
+    channelTitle = database['id to title'].pop(channelId)
+    database['title to id'].pop(channelTitle)
+    database['feeds'].pop(channelId)
+    outputDatabaseToFile(database, DATABASE_PATH)
+
 
 def refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent=req.get):
     localFeeds = database['feeds']
@@ -236,7 +254,7 @@ def getDatabaseString(database):
 
 def outputDatabaseToFile(database, filename):
     with open(filename, 'w') as filePointer:
-        return json.dump(database, filePointer)
+        return json.dump(database, filePointer, indent=4)
 
 # Demonstration Functions #
 
@@ -250,7 +268,7 @@ def doInteractiveChannelSubscribe(database, getHttpContent=req.get):
             for i, result in enumerate(resultList):
                 print(f"Search result {i+1}:\nTitle: {result.title}\nChannel ID: {result.channelId}\nRSS feed: {getRssAddressFromChannelId(result.channelId)}\n")
                 if doYnQuery('Add this channel to subscriptions?'):
-                    addSubscriptionsToDatabase(database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent)
+                    addSubscriptionToDatabase(database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent)
                     break
             outputDatabaseToFile(database, DATABASE_PATH)
             querying = False
@@ -258,13 +276,27 @@ def doInteractiveChannelSubscribe(database, getHttpContent=req.get):
             if not doYnQuery("Something went wrong with the connection. Try again?"):
                 querying = False
 
+def doInteractiveChannelUnsubscribe(database):
+    channelTitleList = [key for key in database['title to id']]
+    if not channelTitleList:
+        print('\nYou are not subscribed to any channels')
+        return
+    channelTitle = channelTitleList[doSelectionQuery("Which channel do you want to unsubscribe from?", channelTitleList)]
+    removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
+
 def doShowSubscriptions(database):
+    if not database['title to id']:
+        print('\nYou are not subscribed to any channels')
+        return
     print("\nYou are subscribed to these channels:\n")
     for title in database['title to id']:
         print(f"title: {title}\nid: {database['title to id'][title]}")
 
 def doInteractivePlayVideo(database, useTor):
     channelMenuList = list(database['title to id'])
+    if not channelMenuList:
+        print('\nYou are not subscribed to any channels')
+        return
     channelTitle = channelMenuList[doSelectionQuery("Which channel do you want to watch a video from?", channelMenuList)]
     channelId = database['title to id'][channelTitle]
     videos = database['feeds'][channelId]
@@ -310,6 +342,7 @@ if __name__ == '__main__':
 
     menuOptions =   {
                         "Subscribe to new channel"  : doInteractiveChannelSubscribe,
+                        "Unsubscribe from channel"  : doInteractiveChannelUnsubscribe,
                         "Show subscriptions"        : doShowSubscriptions,
                         "Play video"                : doInteractivePlayVideo,
                         "Show database"             : doShowDatabase,
