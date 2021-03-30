@@ -103,11 +103,64 @@ class ChannelQueryObject:
 
 # help functions #
 
-def doClear():
-    os.system('clear')
+def doWaitScreenWrapped(message, waitFunction, *args, **kwargs):
+    return curses.wrapper(doWaitScreen, message, waitFunction, *args, **kwargs)
 
-def doPressEnterToContinue():
-    input('\npress enter to continue')
+def doWaitScreen(stdscr, message, waitFunction, *args, **kwargs):
+    curses.curs_set(0)
+    curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
+    printMenu(message, [], stdscr, 0)
+    return waitFunction(*args, **kwargs)
+
+def doYnQueryNcursesWrapped(query):
+    return curses.wrapper(doYnQueryNcurses, query)
+
+def doYnQueryNcurses(stdscr, query):
+    choiceIndex = 0
+    return doSelectionQueryNcurses(stdscr, query, ['yes','no'])=='yes'
+
+def doSelectionQueryNcursesWrapped(query, options, indexChoice=False):
+    return curses.wrapper(doSelectionQueryNcurses, query, options, indexChoice=indexChoice)
+
+def doSelectionQueryNcurses(stdscr, query, options, indexChoice=False):
+    curses.curs_set(0)
+    curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
+    choiceIndex = 0
+    while True:
+        printMenu(query, options, stdscr, choiceIndex)
+        key = stdscr.getch()
+        if key == curses.KEY_UP:
+            choiceIndex = max(choiceIndex-1, 0)
+        elif key == curses.KEY_DOWN:
+            choiceIndex = min(choiceIndex+1, len(options)-1)
+        elif key in [curses.KEY_ENTER, 10, 13]:
+            return choiceIndex if indexChoice else options[choiceIndex]
+    
+def doNotify(message):
+    doSelectionQueryNcursesWrapped(message, ['ok'])
+
+def doGetUserInputWrapped(query, maxInputLength=40):
+    return curses.wrapper(doGetUserInput, query, maxInputLength=maxInputLength)
+
+def doGetUserInput(stdscr, query, maxInputLength=40):
+    curses.curs_set(0)
+    curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
+    curses.curs_set(0)
+    validChars = [ord(letter) for letter in 'qwertyuiopasdfghjklzxcvbnmåäöQWERTYUIOPASDFGHJKLZXCVBNMÅÄÖ1234567890 _']
+    userInputChars = []
+    while True:
+        printMenu(query, [''.join(userInputChars)], stdscr, 0,xAlignment=maxInputLength//2)
+        key = stdscr.getch()
+        if key == curses.KEY_BACKSPACE:
+            if userInputChars: userInputChars.pop()
+        elif key in [curses.KEY_ENTER, 10, 13]:
+            return ''.join(userInputChars)
+        elif key in validChars and len(userInputChars) < maxInputLength:
+            userInputChars.append(chr(key))
+
 
 # use this function to convert the attrs parameter used in HTMLParser into a dict
 def attrsToDict(attrs):
@@ -133,15 +186,18 @@ def getChannelQueryHtml(query, getHttpContent = req.get):
     else:
         return None
 
-def printMenu(query, menu, stdscr, choiceIndex):
+def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
     stdscr.clear()
     height, width = stdscr.getmaxyx()
     screenCenterX = width//2
     screenCenterY = height//2
     nRowsToPrint = (len(menu)+2)//2
 
-    menuWidth = max([len(str(item)) for item in menu])
-    itemX = screenCenterX - menuWidth//2
+    if xAlignment is not None:
+        itemX = screenCenterX - xAlignment
+    elif menu:
+        menuWidth = max([len(str(item)) for item in menu])
+        itemX = screenCenterX - menuWidth//2
 
     if nRowsToPrint > height:
         ySelected = screenCenterY - nRowsToPrint + choiceIndex + 2
@@ -162,64 +218,6 @@ def printMenu(query, menu, stdscr, choiceIndex):
             stdscr.addstr(itemY, itemX, itemString)
         stdscr.attroff(attr)
     stdscr.refresh()
-
-def doYnQueryNcursesWrapped(query):
-    return curses.wrapper(doYnQueryNcurses, query)
-
-def doYnQueryNcurses(stdscr, query):
-    choiceIndex = 0
-    return doSelectionQueryNcurses(stdscr, query, ['yes','no'])=='yes'
-
-def doSelectionQueryNcursesWrapped(query, options, indexChoice=False):
-    return curses.wrapper(doSelectionQueryNcurses, query, options, indexChoice=indexChoice)
-
-def doSelectionQueryNcurses(stdscr, query, options, indexChoice=False):
-    curses.curs_set(0)
-    curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
-    curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
-    choiceIndex = 0
-    while True:
-        printMenu(query, options, stdscr, choiceIndex)
-        key = stdscr.getch()
-        if key == curses.KEY_UP:
-            choiceIndex = max(choiceIndex-1, 0)
-        elif key == curses.KEY_DOWN:
-            choiceIndex = min(choiceIndex+1, len(options)-1)
-        elif key == curses.KEY_ENTER or key in [10, 13]:
-            return choiceIndex if indexChoice else options[choiceIndex]
-    
-# use this function to ask an interactive yes/no question to the user
-def doYnQuery(query, default=None, clear=True):
-    verdict = False
-    if clear:
-        doClear()
-    while True:
-        yn = input(query + ' [y/n] ').lower()
-        if yn not in ['y', 'n'] if default is None else yn not in ['y', 'n', '']:
-            print('invalid response!')
-        else:
-            break
-    if yn == 'y' or (yn == '' and default == 'y'):
-        verdict = True
-    return verdict
-
-def doSelectionQuery(query, options, default=None, indexChoice=False, clear=True):
-    if clear:
-        doClear()
-    query += f' [1-{len(options)}] '
-    if default is not None:
-        query += f'({default}) '
-    while True:
-        ans = input("\n".join([f"{i+1}: {option}" for i, option in enumerate(options)] + ['\n' + query]))
-        if ans == '' and default is not None:
-            selection = options.index(default) if indexChoice else default
-            break
-        elif not ans.isdigit() or int(ans)-1 not in range(len(query)):
-            print('invalid response!')
-        else:
-            selection = int(ans)-1 if indexChoice else options[int(ans)-1]
-            break
-    return selection
 
 # central functions #
 
@@ -274,9 +272,7 @@ def initiateYouTubeRssDatabase():
 
 def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False, getHttpContent=req.get):
     if channelId in database['feeds']:
-        doClear()
-        print("\nAlready subscribed to this channel!")
-        doPressEnterToContinue()
+        doNotify("Already subscribed to this channel!")
         return True
     database['feeds'][channelId] = []
     database['id to title'][channelId] = channelTitle
@@ -319,6 +315,7 @@ def refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent=req.
             return True
         else:
             return False
+    return True
 
 def openUrlInMpv(url, useTor=False, maxResolution=1080):
     while True:
@@ -371,17 +368,15 @@ def outputDatabaseToFile(database, filename):
 # Demonstration Functions #
 
 def doInteractiveChannelSubscribe(database, getHttpContent=req.get):
-    doClear()
-    query = input("Enter channel to search for: ")
-    doClear()
+    query = doGetUserInputWrapped("Enter channel to search for: ")
     querying = True
     while querying:
-        resultList = getChannelQueryResults(query, getHttpContent = getHttpContent)
+        resultList = doWaitScreenWrapped("Getting channel results...", getChannelQueryResults, query, getHttpContent=getHttpContent)
         if resultList is not None:
             result = doSelectionQueryNcursesWrapped(f"search results for {query}, choose which channel to supscribe to", resultList)
             refreshing = True
             while refreshing:
-                if not addSubscriptionToDatabase(database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent):
+                if not doWaitScreenWrapped("getting data from feed for {result.title}...",addSubscriptionToDatabase,database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent):
                     if not doYnQueryNcursesWrapped("Something went wrong with the connection. Try again?"):
                         querying = False
                         refreshing = False
@@ -394,32 +389,25 @@ def doInteractiveChannelSubscribe(database, getHttpContent=req.get):
                 querying = False
 
 def doInteractiveChannelUnsubscribe(database):
-    doClear()
     channelTitleList = [key for key in database['title to id']]
     if not channelTitleList:
-        doClear()
-        print('You are not subscribed to any channels')
-        doPressEnterToContinue()
+        doNotify('You are not subscribed to any channels')
         return
     channelTitle = doSelectionQueryNcursesWrapped("Which channel do you want to unsubscribe from?", channelTitleList)
     removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
 
 def doShowSubscriptions(database):
-    doClear()
     if not database['title to id']:
-        print('You are not subscribed to any channels')
+        doNotify('You are not subscribed to any channels')
     else:
-        print("You are subscribed to these channels:")
+        doNotify("You are subscribed to these channels:")
         for title in database['title to id']:
-            print(f"\ntitle: {title}\nid: {database['title to id'][title]}")
-    doPressEnterToContinue()
+            doNotify(f"\ntitle: {title}\nid: {database['title to id'][title]}")
 
 def doInteractivePlayVideo(database, useTor):
     channelMenuList = list(database['title to id'])
-    doClear()
     if not channelMenuList:
-        print('\nYou are not subscribed to any channels')
-        doPressEnterToContinue()
+        doNotify('You are not subscribed to any channels')
         return
     channelTitle = doSelectionQueryNcursesWrapped("Which channel do you want to watch a video from?", channelMenuList)
     channelId = database['title to id'][channelTitle]
@@ -429,20 +417,19 @@ def doInteractivePlayVideo(database, useTor):
     videoUrl = video['link']
     resolutionMenuList = [1080, 720, 480, 240]
     maxResolution = doSelectionQueryNcursesWrapped("Which maximum resolution do you want to use?", resolutionMenuList)
-    result = openUrlInMpv(videoUrl, useTor=useTor, maxResolution=maxResolution)
+    result = doWaitScreenWrapped("playing video...", openUrlInMpv, videoUrl, useTor=useTor, maxResolution=maxResolution)
     if not video['seen']:
         video['seen'] = result
         outputDatabaseToFile(database, DATABASE_PATH)
 
 def doShowDatabase(database):
-    print(getDatabaseString(database))
-    doPressEnterToContinue()
+    doNotify(getDatabaseString(database))
 
 def doRefreshSubscriptions(database, getHttpContent = req.get):
     channelIdList = list(database['id to title'])
     refreshing = True
     while refreshing:
-        if not refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent = getHttpContent):
+        if not doWaitScreenWrapped("refreshing subscriptions...", refreshSubscriptionsByChannelId, channelIdList, database, getHttpContent = getHttpContent):
             if not doYnQueryNcursesWrapped("Something went wrong with the connection. Try again?"):
                 refreshing = False
         else:
@@ -453,7 +440,6 @@ def doRefreshSubscriptions(database, getHttpContent = req.get):
 
 if __name__ == '__main__':
     try:
-        doClear()
         if not os.path.isdir(YOUTUBE_RSS_DIR):
             os.mkdir(YOUTUBE_RSS_DIR)
         if os.path.isfile(DATABASE_PATH):
@@ -468,10 +454,10 @@ if __name__ == '__main__':
             getHttpContent = req.get
 
         menuOptions =   {
+                            "Refresh subscriptions"     : doRefreshSubscriptions,
                             "Subscribe to new channel"  : doInteractiveChannelSubscribe,
                             "Unsubscribe from channel"  : doInteractiveChannelUnsubscribe,
                             "Browse subscriptions"      : doInteractivePlayVideo,
-                            "Refresh subscriptions"     : doRefreshSubscriptions,
                             "Quit"                      : None
                         }
 
