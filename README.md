@@ -34,7 +34,11 @@ project uses it).
 
 For using Tor, YouTube\_RSS assumes that Tor is installed and currently running
 on port `9050` (which is the default for the Tor daemon anyway). It also requires that
-torsocks is installed. Note that while I am enthusiastic about privacy and security,
+torsocks is installed.
+
+## Disclaimer
+
+Note that while I am enthusiastic about privacy and security,
 I am not a professional, and may have missed something important. However, the surface
 should be relatively small, and I've taken care to get rid of DNS-leaks, etc. as well as I can.
 If you are more knowledgable than I, then I would appreciate input on how to make YouTube\_RSS
