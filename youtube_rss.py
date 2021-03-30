@@ -59,7 +59,7 @@ class RssAddressParser(HTMLParser):
         self.rssAddress = None
 
     def handle_starttag(self, tag, attrs):
-        attrDict = attrsToDict(attrs)
+        attrDict = dict(attrs)
         if 'type' in attrDict and attrDict['type'] == 'application/rss+xml':
             self.rssAddress = attrDict['href']
 
@@ -157,13 +157,6 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
             return ''.join(userInputChars)
         elif key in validChars and len(userInputChars) < maxInputLength:
             userInputChars.append(chr(key))
-
-# use this function to convert the attrs parameter used in HTMLParser into a dict
-def attrsToDict(attrs):
-    attrDict = {}
-    for avp in attrs:
-        attrDict[avp[0]] = avp[1]
-    return attrDict
 
 # use this function to escape a YouTube query for the query URL
 # TODO: implement this function more properly
