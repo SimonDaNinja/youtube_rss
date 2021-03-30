@@ -466,9 +466,9 @@ if __name__ == '__main__':
             choice = doSelectionQuery("What do you want to do?", menuList)
             chosenFunction = menuOptions[choice]
 
-            # handle special cases #
-            # if user wants to quit:
             try:
+                # handle special cases #
+                # if user wants to quit:
                 if chosenFunction is None:
                     exit()
                 # if function needs an http get method
