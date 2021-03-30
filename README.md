@@ -4,7 +4,7 @@ YouTube\_RSS is a simple YouTube client I've made for fun. The goal is to have a
 user interface for those who want to preserve their privacy when using YouTube, but who
 still want to be able to keep track of their favourite channels, etc.
 
-YouTube\_RSS manages subscriptions to channels with RSS, rather than using YouTube's
+YouTube\_RSS manages subscriptions to channels using RSS, rather than YouTube's
 internal subscription system that requires a privacy violating Google account.
 
 It also (optionally) uses Tor to hide the IP address of the user.
