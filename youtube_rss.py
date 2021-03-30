@@ -368,7 +368,7 @@ def doInteractiveChannelSubscribe(database, getHttpContent=req.get):
             result = doSelectionQueryNcursesWrapped(f"search results for {query}, choose which channel to supscribe to", resultList)
             refreshing = True
             while refreshing:
-                if not doWaitScreenWrapped("getting data from feed for {result.title}...",addSubscriptionToDatabase,database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent):
+                if not doWaitScreenWrapped(f"getting data from feed for {result.title}...",addSubscriptionToDatabase,database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent):
                     if not doYnQueryNcursesWrapped("Something went wrong with the connection. Try again?"):
                         querying = False
                         refreshing = False
