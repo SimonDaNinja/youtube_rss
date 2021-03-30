@@ -28,7 +28,7 @@ before using YouTube\_RSS.
 The program also assumes that [mpv](https://github.com/mpv-player/mpv) and is
 installed in the environment. In, for example, Ubuntu, this can be accomplished
 by running `sudo apt-get install mpv`. [youtube-dl](https://github.com/ytdl-org) also
-needs to be installed (I use the latest version on their (official website)[https://youtube-dl.org/], and
+needs to be installed (I use the latest version on their [official website](https://youtube-dl.org/), and
 at the time of this writing, the version in Ubuntu seems too old to work the way this
 project uses it).
 
