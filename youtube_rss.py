@@ -45,7 +45,6 @@ DATABASE_PATH  = '/'.join([YOUTUBE_RSS_DIR, 'database'])
 HIGHLIGHTED = 1
 NOT_HIGHLIGHTED = 2
 
-
 ###########
 # classes #
 ###########
@@ -100,8 +99,6 @@ class ChannelQueryObject:
 #############
 # functions #
 #############
-
-# help functions #
 
 def doWaitScreenWrapped(message, waitFunction, *args, **kwargs):
     return curses.wrapper(doWaitScreen, message, waitFunction, *args, **kwargs)
@@ -161,7 +158,6 @@ def doGetUserInput(stdscr, query, maxInputLength=40):
         elif key in validChars and len(userInputChars) < maxInputLength:
             userInputChars.append(chr(key))
 
-
 # use this function to convert the attrs parameter used in HTMLParser into a dict
 def attrsToDict(attrs):
     attrDict = {}
@@ -218,8 +214,6 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
             stdscr.addstr(itemY, itemX, itemString)
         stdscr.attroff(attr)
     stdscr.refresh()
-
-# central functions #
 
 # if you have a channel url, you can use this function to extract the rss address
 def getRssAddressFromChannelUrl(url, getHttpContent = req.get):
@@ -364,8 +358,6 @@ def getDatabaseString(database):
 def outputDatabaseToFile(database, filename):
     with open(filename, 'w') as filePointer:
         return json.dump(database, filePointer, indent=4)
-
-# Demonstration Functions #
 
 def doInteractiveChannelSubscribe(database, getHttpContent=req.get):
     query = doGetUserInputWrapped("Enter channel to search for: ")
