@@ -146,7 +146,7 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
     curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
     curses.curs_set(0)
-    validChars = [ord(letter) for letter in 'qwertyuiopasdfghjklzxcvbnmåäöQWERTYUIOPASDFGHJKLZXCVBNMÅÄÖ1234567890 _']
+    validChars = [ord(letter) for letter in 'qwertyuiopasdfghjklzxcvbnmåäöQWERTYUIOPASDFGHJKLZXCVBNMÅÄÖ1234567890 _+']
     userInputChars = []
     while True:
         printMenu(query, [''.join(userInputChars)], stdscr, 0,xAlignment=maxInputLength//2)
@@ -161,7 +161,9 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
 # use this function to escape a YouTube query for the query URL
 # TODO: implement this function more properly
 def escapeQuery(query):
-    return query.replace(' ', '+').replace('++','+')
+    query = query.replace('+', '%2B')
+    query = query.replace(' ', '+')
+    return query
 
 #use this function to get html for a youtube channel query
 def getChannelQueryHtml(query, getHttpContent = req.get):
