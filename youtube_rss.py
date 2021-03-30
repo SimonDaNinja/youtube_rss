@@ -194,19 +194,28 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
     elif menu:
         menuWidth = max([len(str(item)) for item in menu])
         itemX = screenCenterX - menuWidth//2
+    
+    if itemX != 0:
+        itemX = max(min(abs(itemX), width)*(itemX//abs(itemX)),0)
 
-    if nRowsToPrint > height:
+    if nRowsToPrint >= height:
         ySelected = screenCenterY - nRowsToPrint + choiceIndex + 2
         offset = (ySelected - screenCenterY)
     else:
         offset = 0
 
-    titleX = screenCenterX-len(query)//2
+    titleX = max(screenCenterX-(len(query)//2),0)
+    if titleX != 0:
+        titleX = max(min(abs(titleX), width)*(titleX//abs(titleX)),0)
+    if len(query) >= width:
+        query = query[0:width-1]
     titleY = screenCenterY-nRowsToPrint - offset
     if titleY >0 and titleY<height:
         stdscr.addstr(titleY, titleX, query)
     for i, item in enumerate(menu):
         itemString = str(item)
+        if len(itemString) > width:
+            itemString = itemString[:len(itemString-width)]
         attr = curses.color_pair(HIGHLIGHTED if i == choiceIndex else NOT_HIGHLIGHTED)
         stdscr.attron(attr)
         itemY = screenCenterY - nRowsToPrint + i + 2 - offset
@@ -214,6 +223,7 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
             stdscr.addstr(itemY, itemX, itemString)
         stdscr.attroff(attr)
     stdscr.refresh()
+
 
 # if you have a channel url, you can use this function to extract the rss address
 def getRssAddressFromChannelUrl(url, getHttpContent = req.get):
