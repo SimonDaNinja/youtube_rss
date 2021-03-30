@@ -447,9 +447,9 @@ if __name__ == '__main__':
 
         menuOptions =   {
                             "Refresh subscriptions"     : doRefreshSubscriptions,
+                            "Browse subscriptions"      : doInteractivePlayVideo,
                             "Subscribe to new channel"  : doInteractiveChannelSubscribe,
                             "Unsubscribe from channel"  : doInteractiveChannelUnsubscribe,
-                            "Browse subscriptions"      : doInteractivePlayVideo,
                             "Quit"                      : None
                         }
 
