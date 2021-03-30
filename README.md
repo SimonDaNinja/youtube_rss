@@ -25,7 +25,7 @@ The project also uses [Tor-Requests](https://github.com/SimonDaNinja/tor_request
 as a submodule, so make sure to run `git submodule update --init --recursive`
 before using YouTube\_RSS.
 
-The program also assumes that [mpv](https://github.com/mpv-player/mpv) and is
+The program also assumes that [mpv](https://github.com/mpv-player/mpv) is
 installed in the environment. In, for example, Ubuntu, this can be accomplished
 by running `sudo apt-get install mpv`. [youtube-dl](https://github.com/ytdl-org) also
 needs to be installed (I use the latest version on their [official website](https://youtube-dl.org/), and
