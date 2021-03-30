@@ -39,7 +39,7 @@ torsocks is installed.
 ## Disclaimer
 
 Note that while I am enthusiastic about privacy and security,
-I am not a professional, and may have missed something important. However, the surface
+I am not a professional, and may have missed something important. However, the surface to protect
 should be relatively small, and I've taken care to get rid of DNS-leaks, etc. as well as I can.
 If you are more knowledgable than I, then I would appreciate input on how to make YouTube\_RSS
 more privacy preserving and secure.
