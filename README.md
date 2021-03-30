@@ -25,10 +25,17 @@ The project also uses [Tor-Requests](https://github.com/SimonDaNinja/tor_request
 as a submodule, so make sure to run `git submodule update --init --recursive`
 before using YouTube\_RSS.
 
-The program also assumes that [Mpv](https://github.com/mpv-player/mpv) is
+The program also assumes that [mpv](https://github.com/mpv-player/mpv) and is
 installed in the environment. In, for example, Ubuntu, this can be accomplished
-by running `sudo apt-get install mpv`.
+by running `sudo apt-get install mpv`. [youtube-dl](https://github.com/ytdl-org) also
+needs to be installed (I use the latest version on their (official website)[https://youtube-dl.org/], and
+at the time of this writing, the version in Ubuntu seems too old to work the way this
+project uses it).
 
 For using Tor, YouTube\_RSS assumes that Tor is installed and currently running
 on port `9050` (which is the default for the Tor daemon anyway). It also requires that
-torsocks is installed.
+torsocks is installed. Note that while I am enthusiastic about privacy and security,
+I am not a professional, and may have missed something important. However, the surface
+should be relatively small, and I've taken care to get rid of DNS-leaks, etc. as well as I can.
+If you are more knowledgable than I, then I would appreciate input on how to make YouTube\_RSS
+more privacy preserving and secure.
