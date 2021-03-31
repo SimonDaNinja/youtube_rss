@@ -319,25 +319,21 @@ def refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent=req.
     return True
 
 def openUrlInMpv(url, useTor=False, maxResolution=1080):
-    while True:
-        try:
-            command = []
-            if useTor:
-                command.append('torsocks')
-                command.append('-i')
-            command += ['mpv', f'--ytdl-format=bestvideo[height=?{maxResolution}]+bestaudio/best']
-            command.append(url)
-            mpvProcess = subprocess.Popen(command, stdout = subprocess.DEVNULL, stderr = subprocess.STDOUT)
-            mpvProcess.wait()
-            result = mpvProcess.poll()
-        except KeyboardInterrupt:
-            mpvProcess.kill()
-            mpvProcess.wait()
-            result = mpvProcess.poll()
-            pass
-        if result in [0,4] or not doYesNoQuery(f"Something went wrong when playing the video (exit code: {result}). Try again?"):
-            break
-    return result in [0,4]
+    try:
+        command = []
+        if useTor:
+            command.append('torsocks')
+            command.append('-i')
+        command += ['mpv', f'--ytdl-format=bestvideo[height=?{maxResolution}]+bestaudio/best']
+        command.append(url)
+        mpvProcess = subprocess.Popen(command, stdout = subprocess.DEVNULL, stderr = subprocess.STDOUT)
+        mpvProcess.wait()
+        result = mpvProcess.poll()
+    except KeyboardInterrupt:
+        mpvProcess.kill()
+        mpvProcess.wait()
+        result = -1
+    return result == 0
 
 def compareFeedDicts(lhs,rhs):
     return lhs['id'] == rhs['id']
@@ -416,7 +412,11 @@ def doInteractivePlayVideo(database, useTor):
     videoUrl = video['link']
     resolutionMenuList = [1080, 720, 480, 240]
     maxResolution = doSelectionQuery("Which maximum resolution do you want to use?", resolutionMenuList)
-    result = doWaitScreen("playing video...", openUrlInMpv, videoUrl, useTor=useTor, maxResolution=maxResolution)
+    result = False
+    while not result:
+        result = doWaitScreen("playing video...", openUrlInMpv, videoUrl, useTor=useTor, maxResolution=maxResolution)
+        if result or not doYesNoQuery(f"Something went wrong when playing the video. Try again?"):
+            break
     if not video['seen']:
         video['seen'] = result
         outputDatabaseToFile(database, DATABASE_PATH)
