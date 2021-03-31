@@ -325,7 +325,7 @@ def openUrlInMpv(url, useTor=False, maxResolution=1080):
             if useTor:
                 command.append('torsocks')
                 command.append('-i')
-            command.append('mpv')
+            command += ['mpv', f'--ytdl-format=bestvideo[height=?{maxResolution}]+bestaudio/best']
             command.append(url)
             mpvProcess = subprocess.Popen(command, stdout = subprocess.DEVNULL, stderr = subprocess.STDOUT)
             mpvProcess.wait()
