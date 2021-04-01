@@ -105,8 +105,38 @@ class ConsentPageParser(HTMLParser):
         if tag == 'form':
             self.relevantForm = False
 
+# Parser used for extracting information about channels from YouTube channel query HTML
+class VideoQueryParser(HTMLParser):
+
+    def __init__(self):
+        super(VideoQueryParser, self).__init__(convert_charrefs=True)
+        self.isScriptTag = False
+        self.resultList = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'script':
+            self.isScriptTag = True
+
+    def handle_data(self, data):
+        if self.isScriptTag:
+            self.isScriptTag = False
+            if 'var ytInitialData' in data:
+                pattern = re.compile('videoId":"([^"]+)","thumbnail":\{"thumbnails":\[\{"url":"[^"]+","width":[0-9]+,"height":[0-9]+\},\{"url":"[^"]+","width":[0-9]+,"height":[0-9]+\}\]\},"title":\{"runs":\[\{"text":"[^"]+"\}\],"accessibility":\{"accessibilityData":\{"label":"([^"]+)"\}')
+                tupleList = pattern.findall(data)
+                resultList = []
+                for tup in tupleList:
+                    resultList.append(VideoQueryObject(videoId = tup[0], title = tup[1]))
+                self.resultList = resultList
 
 # other classes #
+
+class VideoQueryObject:
+    def __init__(self, videoId = None, title = None):
+        self.videoId   = videoId
+        self.title     = title
+
+    def __str__(self):
+        return f"{self.title}"
 
 class ChannelQueryObject:
     def __init__(self, channelId = None, title = None):
@@ -194,26 +224,38 @@ def unProxiedGetHttpContent(url, session=None):
 #use this function to get html for a youtube channel query
 def getChannelQueryHtml(query, getHttpContent = unProxiedGetHttpContent):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAg%253D%253D'
-    try:
-        session = req.Session()
+    session = req.Session()
+    response = getHttpContent(url, session=session)
+    # youtube demands we accept tracking cookies. Since we'll throw the cookies
+    # away right after we've gotten the search results we want, it's harmless
+    if 'consent.youtube.com' in response.url:
+        consentContent = response.text
+        consentPageParser = ConsentPageParser()
+        consentPageParser.feed(consentContent)
+        consentResponse = session.post('https://consent.youtube.com/s', consentPageParser.consentForm)
         response = getHttpContent(url, session=session)
-        # youtube demands we accept tracking cookies. Since we'll throw the cookies
-        # away right after we've gotten the search results we want, it's harmless
-        if 'consent.youtube.com' in response.url:
-            consentContent = response.text
-            consentPageParser = ConsentPageParser()
-            consentPageParser.feed(consentContent)
-            consentResponse = session.post('https://consent.youtube.com/s', consentPageParser.consentForm)
-            response = getHttpContent(url, session=session)
-            with open('log','w') as fp:
-                fp.write(str('yes') + '\n')
 
-    except req.exceptions.ConnectionError:
-        return None
     if response.text is not None:
         return response.text
     else:
         return None
+
+#use this function to get html for a youtube channel query
+def getVideoQueryHtml(query, getHttpContent = req.get):
+    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAQ%253D%253D'
+    session = req.Session()
+    response = getHttpContent(url, session=session)
+    # youtube demands we accept tracking cookies. Since we'll throw the cookies
+    # away right after we've gotten the search results we want, it's harmless
+    if 'consent.youtube.com' in response.url:
+        consentContent = response.text
+        consentPageParser = ConsentPageParser()
+        consentPageParser.feed(consentContent)
+        consentResponse = session.post('https://consent.youtube.com/s', consentPageParser.consentForm)
+        response = getHttpContent(url, session=session)
+    if response.text is not None:
+        return response.text
+    return None
 
 def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
     stdscr.clear()
@@ -250,7 +292,7 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
     for i, item in enumerate(menu):
         itemString = str(item)
         if len(itemString) > width:
-            itemString = itemString[:len(itemString-width)]
+            itemString = itemString[:(2*len(itemString)-width)]
         attr = curses.color_pair(HIGHLIGHTED if i == choiceIndex else NOT_HIGHLIGHTED)
         stdscr.attron(attr)
         itemY = screenCenterY - nRowsToPrint + i + 2 - offset
@@ -288,6 +330,13 @@ def getChannelQueryResults(query, getHttpContent = unProxiedGetHttpContent):
     else:
         return None
 
+# use this function to get query results from searching for a video
+def getVideoQueryResults(query, getHttpContent = req.get):
+    htmlContent = getVideoQueryHtml(query, getHttpContent = getHttpContent)
+    parser = VideoQueryParser()
+    parser.feed(htmlContent)
+    return parser.resultList
+
 # use this function to get rss entries from channel id
 def getRssEntriesFromChannelId(channelId, getHttpContent = unProxiedGetHttpContent):
     rssAddress = getRssAddressFromChannelId(channelId)
@@ -312,13 +361,12 @@ def initiateYouTubeRssDatabase():
 def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False, getHttpContent=unProxiedGetHttpContent):
     if channelId in database['feeds']:
         doNotify("Already subscribed to this channel!")
-        return True
+        return
     database['feeds'][channelId] = []
     database['id to title'][channelId] = channelTitle
     database['title to id'][channelTitle] = channelId
     if refresh:
-        return refreshSubscriptionsByChannelId([channelId], database, getHttpContent=getHttpContent)
-    return True
+        refreshSubscriptionsByChannelId([channelId], database, getHttpContent=getHttpContent)
 
 def removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle):
     if channelTitle not in database['title to id']:
@@ -400,24 +448,45 @@ def outputDatabaseToFile(database, filename):
     with open(filename, 'w') as filePointer:
         return json.dump(database, filePointer, indent=4)
 
+def doInteractiveSearchForVideo(database, getHttpContent=unProxiedGetHttpContent, useTor=False):
+    query = doGetUserInput("Search for video: ")
+    querying = True
+    while querying:
+        try:
+            resultList = doWaitScreen("Getting video results...", getVideoQueryResults, query, getHttpContent=getHttpContent)
+            if resultList:
+                result = doSelectionQuery(f"search results for {query}:", resultList)
+                url = f"http://youtube.com/watch?v={result.videoId}"
+                refreshing = True
+                playVideo(url, useTor=useTor)
+                querying = False
+            else:
+                doNotify("no results found")
+                querying = False
+        except req.exceptions.ConnectionError:
+            if not doYesNoQuery("Something went wrong with the connection. Try again?"):
+                querying = False
+            
+
 def doInteractiveChannelSubscribe(database, getHttpContent=unProxiedGetHttpContent):
     query = doGetUserInput("Enter channel to search for: ")
     querying = True
     while querying:
-        resultList = doWaitScreen("Getting channel results...", getChannelQueryResults, query, getHttpContent=getHttpContent)
-        if resultList is not None:
+        try:
+            resultList = doWaitScreen("Getting channel results...", getChannelQueryResults, query, getHttpContent=getHttpContent)
             result = doSelectionQuery(f"search results for {query}, choose which channel to supscribe to", resultList)
             refreshing = True
             while refreshing:
-                if not doWaitScreen(f"getting data from feed for {result.title}...",addSubscriptionToDatabase,database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent):
+                try:
+                    doWaitScreen(f"getting data from feed for {result.title}...",addSubscriptionToDatabase,database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent)
+                    refreshing = False
+                except req.exceptions.ConnectionError:
                     if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                         querying = False
                         refreshing = False
-                else:
-                    refreshing = False
             outputDatabaseToFile(database, DATABASE_PATH)
             querying = False
-        else:
+        except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                 querying = False
 
@@ -437,7 +506,7 @@ def doShowSubscriptions(database):
         for title in database['title to id']:
             doNotify(f"\ntitle: {title}\nid: {database['title to id'][title]}")
 
-def doInteractivePlayVideo(database, useTor):
+def doInteractiveBrowseSubscriptions(database, useTor):
     channelMenuList = list(database['title to id'])
     if not channelMenuList:
         doNotify('You are not subscribed to any channels')
@@ -448,6 +517,13 @@ def doInteractivePlayVideo(database, useTor):
     videosMenuList = [video['title'] + (' (unseen!)' if not video['seen'] else '') for video in videos]
     video = videos[doSelectionQuery("Which video do you want to watch?", videosMenuList, indexChoice=True)]
     videoUrl = video['link']
+    result = playVideo(videoUrl, useTor)
+    if not video['seen']:
+        video['seen'] = result
+        outputDatabaseToFile(database, DATABASE_PATH)
+
+
+def playVideo(videoUrl, useTor):
     resolutionMenuList = [1080, 720, 480, 240]
     maxResolution = doSelectionQuery("Which maximum resolution do you want to use?", resolutionMenuList)
     result = False
@@ -455,9 +531,7 @@ def doInteractivePlayVideo(database, useTor):
         result = doWaitScreen("playing video...", openUrlInMpv, videoUrl, useTor=useTor, maxResolution=maxResolution)
         if result or not doYesNoQuery(f"Something went wrong when playing the video. Try again?"):
             break
-    if not video['seen']:
-        video['seen'] = result
-        outputDatabaseToFile(database, DATABASE_PATH)
+    return result
 
 def doShowDatabase(database):
     doNotify(getDatabaseString(database))
@@ -491,8 +565,9 @@ if __name__ == '__main__':
             getHttpContent = unProxiedGetHttpContent
 
         menuOptions =   {
+                            "Search for video"          : doInteractiveSearchForVideo,
                             "Refresh subscriptions"     : doRefreshSubscriptions,
-                            "Browse subscriptions"      : doInteractivePlayVideo,
+                            "Browse subscriptions"      : doInteractiveBrowseSubscriptions,
                             "Subscribe to new channel"  : doInteractiveChannelSubscribe,
                             "Unsubscribe from channel"  : doInteractiveChannelUnsubscribe,
                             "Quit"                      : None
@@ -513,8 +588,10 @@ if __name__ == '__main__':
                 elif chosenFunction in [doInteractiveChannelSubscribe, doRefreshSubscriptions]:
                     chosenFunction(database, getHttpContent)
                 # if function needs to know if Tor is used
-                elif chosenFunction in [doInteractivePlayVideo]:
+                elif chosenFunction in [doInteractiveBrowseSubscriptions]:
                     chosenFunction(database, useTor)
+                elif chosenFunction in [doInteractiveSearchForVideo]:
+                    chosenFunction(database, useTor = useTor, getHttpContent=getHttpContent)
                 # default case: choice only needs to use database
                 else:
                     chosenFunction(database)
