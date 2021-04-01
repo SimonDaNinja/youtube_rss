@@ -86,6 +86,26 @@ class ChannelQueryParser(HTMLParser):
                     resultList.append(ChannelQueryObject(channelId = tup[0], title = tup[1]))
                 self.resultList = resultList
 
+class ConsentPageParser(HTMLParser):
+
+    def __init__(self):
+        super(ConsentPageParser, self).__init__(convert_charrefs=True)
+        self.relevantForm = False
+        self.resultList = None
+        self.consentForm = {}
+
+    def handle_starttag(self, tag, attrs):
+        attrDict = dict(attrs)
+        if tag == 'form' and attrDict['action'] == "https://consent.youtube.com/s":
+            self.relevantForm = True
+        if self.relevantForm and tag=='input' and 'name' in attrDict:
+            self.consentForm[attrDict['name']]=attrDict['value']
+
+    def handle_endtag(self, tag):
+        if tag == 'form':
+            self.relevantForm = False
+
+
 # other classes #
 
 class ChannelQueryObject:
@@ -165,11 +185,29 @@ def escapeQuery(query):
     query = query.replace(' ', '+')
     return query
 
+def unProxiedGetHttpContent(url, session=None):
+    if session is None:
+        return req.get(url)
+    else:
+        return session.get(url)
+
 #use this function to get html for a youtube channel query
-def getChannelQueryHtml(query, getHttpContent = req.get):
+def getChannelQueryHtml(query, getHttpContent = unProxiedGetHttpContent):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAg%253D%253D'
     try:
-        response = getHttpContent(url)
+        session = req.Session()
+        response = getHttpContent(url, session=session)
+        # youtube demands we accept tracking cookies. Since we'll throw the cookies
+        # away right after we've gotten the search results we want, it's harmless
+        if 'consent.youtube.com' in response.url:
+            consentContent = response.text
+            consentPageParser = ConsentPageParser()
+            consentPageParser.feed(consentContent)
+            consentResponse = session.post('https://consent.youtube.com/s', consentPageParser.consentForm)
+            response = getHttpContent(url, session=session)
+            with open('log','w') as fp:
+                fp.write(str('yes') + '\n')
+
     except req.exceptions.ConnectionError:
         return None
     if response.text is not None:
@@ -223,7 +261,7 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
 
 
 # if you have a channel url, you can use this function to extract the rss address
-def getRssAddressFromChannelUrl(url, getHttpContent = req.get):
+def getRssAddressFromChannelUrl(url, getHttpContent = unProxiedGetHttpContent):
     try:
         response = getHttpContent(url)
     except req.exceptions.ConnectionError:
@@ -241,7 +279,7 @@ def getRssAddressFromChannelId(channelId):
     return f"https://www.youtube.com/feeds/videos.xml?channel_id={channelId}"
 
 # use this function to get query results from searching for a channel
-def getChannelQueryResults(query, getHttpContent = req.get):
+def getChannelQueryResults(query, getHttpContent = unProxiedGetHttpContent):
     htmlContent = getChannelQueryHtml(query, getHttpContent = getHttpContent)
     if htmlContent is not None:
         parser = ChannelQueryParser()
@@ -251,7 +289,7 @@ def getChannelQueryResults(query, getHttpContent = req.get):
         return None
 
 # use this function to get rss entries from channel id
-def getRssEntriesFromChannelId(channelId, getHttpContent = req.get):
+def getRssEntriesFromChannelId(channelId, getHttpContent = unProxiedGetHttpContent):
     rssAddress = getRssAddressFromChannelId(channelId)
     try:
         response = getHttpContent(rssAddress)
@@ -271,7 +309,7 @@ def initiateYouTubeRssDatabase():
     database['title to id'] = {}
     return database
 
-def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False, getHttpContent=req.get):
+def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False, getHttpContent=unProxiedGetHttpContent):
     if channelId in database['feeds']:
         doNotify("Already subscribed to this channel!")
         return True
@@ -297,7 +335,7 @@ def removeSubscriptionFromDatabaseByChannelId(database, channelId):
     outputDatabaseToFile(database, DATABASE_PATH)
 
 
-def refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent=req.get):
+def refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent=unProxiedGetHttpContent):
     localFeeds = database['feeds']
     for channelId in channelIdList:
         localFeed = localFeeds[channelId]
@@ -362,7 +400,7 @@ def outputDatabaseToFile(database, filename):
     with open(filename, 'w') as filePointer:
         return json.dump(database, filePointer, indent=4)
 
-def doInteractiveChannelSubscribe(database, getHttpContent=req.get):
+def doInteractiveChannelSubscribe(database, getHttpContent=unProxiedGetHttpContent):
     query = doGetUserInput("Enter channel to search for: ")
     querying = True
     while querying:
@@ -424,7 +462,7 @@ def doInteractivePlayVideo(database, useTor):
 def doShowDatabase(database):
     doNotify(getDatabaseString(database))
 
-def doRefreshSubscriptions(database, getHttpContent = req.get):
+def doRefreshSubscriptions(database, getHttpContent = unProxiedGetHttpContent):
     channelIdList = list(database['id to title'])
     refreshing = True
     while refreshing:
@@ -450,7 +488,7 @@ if __name__ == '__main__':
         if useTor:
             getHttpContent = getHttpResponseUsingSocks5
         else:
-            getHttpContent = req.get
+            getHttpContent = unProxiedGetHttpContent
 
         menuOptions =   {
                             "Refresh subscriptions"     : doRefreshSubscriptions,
