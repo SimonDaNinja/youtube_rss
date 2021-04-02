@@ -241,10 +241,7 @@ def getChannelQueryHtml(query, getHttpContent = unProxiedGetHttpContent):
         consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
         response = getHttpContent(url, session=session)
 
-    if response.text is not None:
-        return response.text
-    else:
-        return None
+    return response.text
 
 #use this function to get html for a youtube channel query
 def getVideoQueryHtml(query, getHttpContent = req.get):
@@ -259,9 +256,7 @@ def getVideoQueryHtml(query, getHttpContent = req.get):
         consentPageParser.feed(consentContent)
         consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
         response = getHttpContent(url, session=session)
-    if response.text is not None:
-        return response.text
-    return None
+    return response.text
 
 def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
     stdscr.clear()
