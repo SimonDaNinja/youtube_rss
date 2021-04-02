@@ -179,9 +179,9 @@ def doSelectionQueryNcurses(stdscr, query, options, indexChoice=False):
         printMenu(query, options, stdscr, choiceIndex)
         key = stdscr.getch()
         if key == curses.KEY_UP:
-            choiceIndex = max(choiceIndex-1, 0)
+            choiceIndex = (choiceIndex-1)%len(options)
         elif key == curses.KEY_DOWN:
-            choiceIndex = min(choiceIndex+1, len(options)-1)
+            choiceIndex = (choiceIndex+1)%len(options)
         elif key in [curses.KEY_ENTER, 10, 13]:
             return choiceIndex if indexChoice else options[choiceIndex]
     
@@ -238,7 +238,6 @@ def getChannelQueryHtml(query, getHttpContent = unProxiedGetHttpContent):
         consentContent = response.text
         consentPageParser = ConsentPageParser()
         consentPageParser.feed(consentContent)
-        consentResponse = session.post('https://consent.youtube.com/s', consentPageParser.consentForm)
         consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
         response = getHttpContent(url, session=session)
 
