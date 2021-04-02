@@ -601,8 +601,11 @@ if __name__ == '__main__':
             if result == 0:
                 getHttpContent = getHttpResponseUsingSocks5
             else:
-                doNotify("You don't seem to be running Tor on port 9050! Fix this and try again!")
-                exit()
+                if doYesNoQuery("Tor daemon not found on port 9050! Continue without tor?"):
+                    getHttpContent = unProxiedGetHttpContent
+                else:
+                    doNotify("Can't find Tor daemon. Exiting program.")
+                    exit()
         else:
             getHttpContent = unProxiedGetHttpContent
 
