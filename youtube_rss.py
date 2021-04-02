@@ -282,8 +282,6 @@ def getVideoQueryHtml(query, getHttpContent = req.get):
         else:
             consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
             response = getHttpContent(url, session=session)
-        with open('log','w') as fp:
-            fp.write('\n'.join([str(consentPageParser.consentForm), str(consentResponse.__dict__)]))
         if consentResponse.status_code == 400:
             raise MalformedRequestException
     return response.text
