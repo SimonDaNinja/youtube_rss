@@ -156,6 +156,10 @@ class ChannelQueryObject:
 # functions #
 #############
 
+"""
+Functions for presentation
+"""
+
 def doWaitScreen(message, waitFunction, *args, **kwargs):
     return curses.wrapper(doWaitScreenNcurses, message, waitFunction, *args, **kwargs)
 
@@ -213,6 +217,54 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
             return ''.join(userInputChars)
         elif key in validChars and len(userInputChars) < maxInputLength:
             userInputChars.append(chr(key))
+
+def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
+    stdscr.clear()
+    height, width = stdscr.getmaxyx()
+    screenCenterX = width//2
+    screenCenterY = height//2
+    nRowsToPrint = (len(menu)+2)//2
+
+    if xAlignment is not None:
+        itemX = screenCenterX - xAlignment
+    elif menu:
+        menuWidth = max([len(str(item)) for item in menu])
+        itemX = screenCenterX - menuWidth//2
+    else:
+        itemX = None
+    
+    if itemX != 0 and itemX is not None:
+        itemX = max(min(abs(itemX), width)*(itemX//abs(itemX)),0)
+
+    if nRowsToPrint >= height:
+        ySelected = screenCenterY - nRowsToPrint + choiceIndex + 2
+        offset = (ySelected - screenCenterY)
+    else:
+        offset = 0
+
+    titleX = max(screenCenterX-(len(query)//2),0)
+    if titleX != 0:
+        titleX = max(min(abs(titleX), width)*(titleX//abs(titleX)),0)
+    if len(query) >= width:
+        query = query[0:width-1]
+    titleY = screenCenterY-nRowsToPrint - offset
+    if titleY >0 and titleY<height:
+        stdscr.addstr(titleY, titleX, query)
+    for i, item in enumerate(menu):
+        itemString = str(item)
+        if len(itemString) > width:
+            itemString = itemString[:(2*len(itemString)-width)]
+        attr = curses.color_pair(HIGHLIGHTED if i == choiceIndex else NOT_HIGHLIGHTED)
+        stdscr.attron(attr)
+        itemY = screenCenterY - nRowsToPrint + i + 2 - offset
+        if itemY >0 and itemY<height:
+            stdscr.addstr(itemY, itemX, itemString)
+        stdscr.attroff(attr)
+    stdscr.refresh()
+
+"""
+Functions for retreiving and processing network data
+"""
 
 # use this function to escape a YouTube query for the query URL
 # TODO: implement this function more properly
@@ -286,51 +338,6 @@ def getVideoQueryHtml(query, getHttpContent = req.get):
         if consentResponse.status_code == 400:
             raise MalformedRequestException
     return response.text
-
-def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
-    stdscr.clear()
-    height, width = stdscr.getmaxyx()
-    screenCenterX = width//2
-    screenCenterY = height//2
-    nRowsToPrint = (len(menu)+2)//2
-
-    if xAlignment is not None:
-        itemX = screenCenterX - xAlignment
-    elif menu:
-        menuWidth = max([len(str(item)) for item in menu])
-        itemX = screenCenterX - menuWidth//2
-    else:
-        itemX = None
-    
-    if itemX != 0 and itemX is not None:
-        itemX = max(min(abs(itemX), width)*(itemX//abs(itemX)),0)
-
-    if nRowsToPrint >= height:
-        ySelected = screenCenterY - nRowsToPrint + choiceIndex + 2
-        offset = (ySelected - screenCenterY)
-    else:
-        offset = 0
-
-    titleX = max(screenCenterX-(len(query)//2),0)
-    if titleX != 0:
-        titleX = max(min(abs(titleX), width)*(titleX//abs(titleX)),0)
-    if len(query) >= width:
-        query = query[0:width-1]
-    titleY = screenCenterY-nRowsToPrint - offset
-    if titleY >0 and titleY<height:
-        stdscr.addstr(titleY, titleX, query)
-    for i, item in enumerate(menu):
-        itemString = str(item)
-        if len(itemString) > width:
-            itemString = itemString[:(2*len(itemString)-width)]
-        attr = curses.color_pair(HIGHLIGHTED if i == choiceIndex else NOT_HIGHLIGHTED)
-        stdscr.attron(attr)
-        itemY = screenCenterY - nRowsToPrint + i + 2 - offset
-        if itemY >0 and itemY<height:
-            stdscr.addstr(itemY, itemX, itemString)
-        stdscr.attroff(attr)
-    stdscr.refresh()
-
 
 # if you have a channel url, you can use this function to extract the rss address
 def getRssAddressFromChannelUrl(url, getHttpContent = unProxiedGetHttpContent):
@@ -464,6 +471,10 @@ def getRelevantDictFromFeedParserDict(feedparserDict):
                     }
     return outputDict
 
+"""
+Functions for managing database persistence between user sessions
+"""
+
 def parseDatabaseContent(content):
     return json.loads(content)
 
@@ -477,6 +488,10 @@ def getDatabaseString(database):
 def outputDatabaseToFile(database, filename):
     with open(filename, 'w') as filePointer:
         return json.dump(database, filePointer, indent=4)
+
+"""
+Functions for controlling main flow of the application
+"""
 
 def doInteractiveSearchForVideo(database, getHttpContent=unProxiedGetHttpContent, useTor=False):
     query = doGetUserInput("Search for video: ")
