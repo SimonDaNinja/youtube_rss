@@ -257,7 +257,7 @@ def getVideoQueryHtml(query, getHttpContent = req.get):
         consentContent = response.text
         consentPageParser = ConsentPageParser()
         consentPageParser.feed(consentContent)
-        consentResponse = session.post('https://consent.youtube.com/s', consentPageParser.consentForm)
+        consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
         response = getHttpContent(url, session=session)
     if response.text is not None:
         return response.text
