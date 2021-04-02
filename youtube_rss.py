@@ -28,6 +28,7 @@ import json
 import curses
 try:
     from tor_requests.tor_requests import getHttpResponseUsingSocks5
+    from tor_requests.tor_requests import generateNewSocks5Auth
 except:
     print("you probably haven't run the command\ngit submodule update --init --recursive")
     exit()
@@ -48,6 +49,10 @@ NOT_HIGHLIGHTED = 2
 ###########
 # classes #
 ###########
+
+# error classes
+class MalformedRequestException(Exception):
+    pass
 
 # parser classes #
 
@@ -231,31 +236,56 @@ def unProxiedGetHttpContent(url, session=None, method = 'GET', postPayload = {})
 def getChannelQueryHtml(query, getHttpContent = unProxiedGetHttpContent):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAg%253D%253D'
     session = req.Session()
-    response = getHttpContent(url, session=session)
+    if getHttpContent == getHttpResponseUsingSocks5:
+        # these aren't sensitive data - they're just used by the local tor daemon for
+        # stream isolation
+        socks5Username, socks5Password = generateNewSocks5Auth()
+        response = getHttpContent(url, session=session, username=socks5Username, password=socks5Password)
+    else:
+        response = getHttpContent(url, session=session)
     # youtube demands we accept tracking cookies. Since we'll throw the cookies
     # away right after we've gotten the search results we want, it's harmless
     if 'consent.youtube.com' in response.url:
         consentContent = response.text
         consentPageParser = ConsentPageParser()
         consentPageParser.feed(consentContent)
-        consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
-        response = getHttpContent(url, session=session)
-
+        if getHttpContent == getHttpResponseUsingSocks5:
+            consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm, username=socks5Username, password=socks5Password)
+        else:
+            response = getHttpContent(url, session=session, username=socks5Username, password=socks5Password)
+            consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
+            response = getHttpContent(url, session=session)
+    if consentResponse.status_code == 400:
+        raise MalformedRequestException
     return response.text
 
 #use this function to get html for a youtube channel query
 def getVideoQueryHtml(query, getHttpContent = req.get):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAQ%253D%253D'
     session = req.Session()
-    response = getHttpContent(url, session=session)
+    if getHttpContent == getHttpResponseUsingSocks5:
+        # these aren't sensitive data - they're just used by the local tor daemon for
+        # stream isolation
+        socks5Username, socks5Password = generateNewSocks5Auth()
+        response = getHttpContent(url, session=session, username=socks5Username, password=socks5Password)
+    else:
+        response = getHttpContent(url, session=session)
     # youtube demands we accept tracking cookies. Since we'll throw the cookies
     # away right after we've gotten the search results we want, it's harmless
     if 'consent.youtube.com' in response.url:
         consentContent = response.text
         consentPageParser = ConsentPageParser()
         consentPageParser.feed(consentContent)
-        consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
-        response = getHttpContent(url, session=session)
+        if getHttpContent == getHttpResponseUsingSocks5:
+            consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm, username=socks5Username, password=socks5Password)
+            response = getHttpContent(url, session=session, username=socks5Username, password=socks5Password)
+        else:
+            consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
+            response = getHttpContent(url, session=session)
+        with open('log','w') as fp:
+            fp.write('\n'.join([str(consentPageParser.consentForm), str(consentResponse.__dict__)]))
+        if consentResponse.status_code == 400:
+            raise MalformedRequestException
     return response.text
 
 def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
@@ -467,6 +497,9 @@ def doInteractiveSearchForVideo(database, getHttpContent=unProxiedGetHttpContent
         except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                 querying = False
+        except MalformedRequestException:
+            if not doYesNoQuery("YouTube rejected request as malformed. Try again? (usually works)"):
+                querying = False
             
 
 def doInteractiveChannelSubscribe(database, getHttpContent=unProxiedGetHttpContent):
@@ -489,6 +522,9 @@ def doInteractiveChannelSubscribe(database, getHttpContent=unProxiedGetHttpConte
             querying = False
         except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
+                querying = False
+        except MalformedRequestException:
+            if not doYesNoQuery("YouTube rejected request. Try again? (usually works)"):
                 querying = False
 
 def doInteractiveChannelUnsubscribe(database):
