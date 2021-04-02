@@ -26,6 +26,7 @@ import re
 import feedparser
 import json
 import curses
+import socket
 try:
     from tor_requests.tor_requests import getHttpResponseUsingSocks5
     from tor_requests.tor_requests import generateNewSocks5Auth
@@ -595,7 +596,13 @@ if __name__ == '__main__':
 
         useTor = doYesNoQuery("Do you want to use tor?")
         if useTor:
-            getHttpContent = getHttpResponseUsingSocks5
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                result = sock.connect_ex(('127.0.0.1',9050))
+            if result == 0:
+                getHttpContent = getHttpResponseUsingSocks5
+            else:
+                doNotify("You don't seem to be running Tor on port 9050! Fix this and try again!")
+                exit()
         else:
             getHttpContent = unProxiedGetHttpContent
 
