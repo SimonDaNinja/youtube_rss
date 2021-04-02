@@ -215,11 +215,17 @@ def escapeQuery(query):
     query = query.replace(' ', '+')
     return query
 
-def unProxiedGetHttpContent(url, session=None):
+def unProxiedGetHttpContent(url, session=None, method = 'GET', postPayload = {}):
     if session is None:
-        return req.get(url)
+        if method == 'GET':
+            return req.get(url)
+        elif method == 'POST':
+            return reg.post(url, postPayload)
     else:
-        return session.get(url)
+        if method == 'GET':
+            return session.get(url)
+        elif method == 'POST':
+            return session.post(url, postPayload)
 
 #use this function to get html for a youtube channel query
 def getChannelQueryHtml(query, getHttpContent = unProxiedGetHttpContent):
@@ -233,6 +239,7 @@ def getChannelQueryHtml(query, getHttpContent = unProxiedGetHttpContent):
         consentPageParser = ConsentPageParser()
         consentPageParser.feed(consentContent)
         consentResponse = session.post('https://consent.youtube.com/s', consentPageParser.consentForm)
+        consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
         response = getHttpContent(url, session=session)
 
     if response.text is not None:
