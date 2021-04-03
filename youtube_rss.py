@@ -304,12 +304,12 @@ def getChannelQueryHtml(query, getHttpContent = unProxiedGetHttpContent):
         consentPageParser.feed(consentContent)
         if getHttpContent == getHttpResponseUsingSocks5:
             consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm, username=socks5Username, password=socks5Password)
-        else:
             response = getHttpContent(url, session=session, username=socks5Username, password=socks5Password)
+        else:
             consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
             response = getHttpContent(url, session=session)
-    if consentResponse.status_code == 400:
-        raise MalformedRequestException
+        if consentResponse.status_code == 400:
+            raise MalformedRequestException
     return response.text
 
 #use this function to get html for a youtube channel query
