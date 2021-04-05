@@ -12,7 +12,8 @@ It also (optionally) uses Tor to hide the IP address of the user.
 ## Dependencies
 
 YouTube\_RSS is developed and tested on Ubuntu Linux. It will probably work just fine in
-similar Unix-like operating systems, but almost certainly not on Windows.
+similar Unix-like operating systems, but probably not on Windows (at least not without
+a little bit of pain).
 
 The following python modules are used and may need to be installed, e.g. using pip:
 ```
