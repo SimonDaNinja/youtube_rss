@@ -51,10 +51,6 @@ NOT_HIGHLIGHTED = 2
 # classes #
 ###########
 
-# error classes
-class BadRequestException(Exception):
-    pass
-
 # parser classes #
 
 # Parser used for extracting an RSS Address from channel page HTML
@@ -93,25 +89,6 @@ class ChannelQueryParser(HTMLParser):
                     resultList.append(ChannelQueryObject(channelId = tup[0], 
                         title = tup[1]))
                 self.resultList = resultList
-
-class ConsentPageParser(HTMLParser):
-
-    def __init__(self):
-        super(ConsentPageParser, self).__init__(convert_charrefs=True)
-        self.relevantForm = False
-        self.resultList = None
-        self.consentForm = {}
-
-    def handle_starttag(self, tag, attrs):
-        attrDict = dict(attrs)
-        if tag == 'form' and attrDict['action'] == "https://consent.youtube.com/s":
-            self.relevantForm = True
-        if self.relevantForm and tag=='input' and 'name' in attrDict:
-            self.consentForm[attrDict['name']]=attrDict['value']
-
-    def handle_endtag(self, tag):
-        if tag == 'form':
-            self.relevantForm = False
 
 # Parser used for extracting information about channels from YouTube channel query HTML
 class VideoQueryParser(HTMLParser):
@@ -294,6 +271,8 @@ def unProxiedGetHttpContent(url, session=None, method = 'GET', postPayload = {})
 
 def getYouTubeHtml(url, useTor):
     session = req.Session()
+    # This cookie lets us avoid the YouTube consent page
+    session.cookies['CONSENT']='YES+'
     if useTor:
         socks5Username, socks5Password = generateNewSocks5Auth()
         response = getHttpResponseUsingSocks5(url, session=session, 
@@ -301,29 +280,6 @@ def getYouTubeHtml(url, useTor):
     else:
         response = unProxiedGetHttpContent(url, session=session)
 
-    # youtube demands we accept tracking cookies. Since we'll throw the cookies
-    # away right after we've gotten the search results we want, it's harmless
-    if 'consent.youtube.com' in response.url:
-        consentContent = response.text
-        consentPageParser = ConsentPageParser()
-        consentPageParser.feed(consentContent)
-        if useTor:
-            # we use the same tor circuit again; we're just trying to reach the
-            # same content anyway, and the temporarily accepted cookies kind of
-            # defeat the purpose of using a different circuit
-            consentResponse = getHttpResponseUsingSocks5('https://consent.youtube.com/s',
-                    session=session, method='POST', 
-                    postPayload = consentPageParser.consentForm, username=socks5Username, 
-                    password=socks5Password)
-            response = getHttpResponseUsingSocks5(url, session=session, 
-                    username=socks5Username, password=socks5Password)
-        else:
-            consentResponse = unProxiedGetHttpContent('https://consent.youtube.com/s', 
-                    session=session, method = 'POST', 
-                    postPayload = consentPageParser.consentForm)
-            response = unProxiedGetHttpContent(url, session = session)
-    if response.status_code == 400:
-        raise BadRequestException
     return response.text
 
 #use this function to get html for a youtube channel query
@@ -508,10 +464,6 @@ def doInteractiveSearchForVideo(database, useTor=False):
         except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                 querying = False
-        except BadRequestException:
-            if not doYesNoQuery("YouTube rejected request as malformed. Try again? " + \
-                    "(usually works)"):
-                querying = False
             
 
 def doInteractiveChannelSubscribe(database, useTor=False):
@@ -543,9 +495,6 @@ def doInteractiveChannelSubscribe(database, useTor=False):
                     querying = False
         except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
-                querying = False
-        except BadRequestException:
-            if not doYesNoQuery("YouTube rejected request. Try again? (usually works)"):
                 querying = False
 
 def doInteractiveChannelUnsubscribe(database):
