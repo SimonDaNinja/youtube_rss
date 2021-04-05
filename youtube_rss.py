@@ -85,11 +85,13 @@ class ChannelQueryParser(HTMLParser):
         if self.isScriptTag:
             self.isScriptTag = False
             if 'var ytInitialData' in data:
-                pattern = re.compile('"channelRenderer":\{"channelId":"([^"]+)","title":\{"simpleText":"([^"]+)"')
+                pattern = re.compile('"channelRenderer":\{"channelId":"([^"]+)",' + \
+                        '"title":\{"simpleText":"([^"]+)"')
                 tupleList = pattern.findall(data)
                 resultList = []
                 for tup in tupleList:
-                    resultList.append(ChannelQueryObject(channelId = tup[0], title = tup[1]))
+                    resultList.append(ChannelQueryObject(channelId = tup[0], 
+                        title = tup[1]))
                 self.resultList = resultList
 
 class ConsentPageParser(HTMLParser):
@@ -127,7 +129,11 @@ class VideoQueryParser(HTMLParser):
         if self.isScriptTag:
             self.isScriptTag = False
             if 'var ytInitialData' in data:
-                pattern = re.compile('videoId":"([^"]+)","thumbnail":\{"thumbnails":\[\{"url":"[^"]+","width":[0-9]+,"height":[0-9]+\},\{"url":"[^"]+","width":[0-9]+,"height":[0-9]+\}\]\},"title":\{"runs":\[\{"text":"[^"]+"\}\],"accessibility":\{"accessibilityData":\{"label":"([^"]+)"\}')
+                pattern = re.compile('videoId":"([^"]+)","thumbnail":\{"thumbnails":' + \
+                        '\[\{"url":"[^"]+","width":[0-9]+,"height":[0-9]+\},\{"url"' + \
+                        ':"[^"]+","width":[0-9]+,"height":[0-9]+\}\]\},"title":\{' + \
+                        '"runs":\[\{"text":"[^"]+"\}\],"accessibility":\{' + \
+                        '"accessibilityData":\{"label":"([^"]+)"\}')
                 tupleList = pattern.findall(data)
                 resultList = []
                 for tup in tupleList:
@@ -206,7 +212,8 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
     curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
     curses.curs_set(0)
-    validChars = [ord(letter) for letter in 'qwertyuiopasdfghjklzxcvbnmåäöQWERTYUIOPASDFGHJKLZXCVBNMÅÄÖ1234567890 _+']
+    validChars = [ord(letter) for letter in \
+            'qwertyuiopasdfghjklzxcvbnmåäöQWERTYUIOPASDFGHJKLZXCVBNMÅÄÖ1234567890 _+']
     userInputChars = []
     while True:
         printMenu(query, [''.join(userInputChars)], stdscr, 0,xAlignment=maxInputLength//2)
@@ -289,7 +296,8 @@ def getYouTubeHtml(url, useTor):
     session = req.Session()
     if useTor:
         socks5Username, socks5Password = generateNewSocks5Auth()
-        response = getHttpResponseUsingSocks5(url, session=session, username=socks5Username, password=socks5Password)
+        response = getHttpResponseUsingSocks5(url, session=session, 
+                username=socks5Username, password=socks5Password)
     else:
         response = unProxiedGetHttpContent(url, session=session)
 
@@ -303,10 +311,16 @@ def getYouTubeHtml(url, useTor):
             # we use the same tor circuit again; we're just trying to reach the
             # same content anyway, and the temporarily accepted cookies kind of
             # defeat the purpose of using a different circuit
-            consentResponse = getHttpResponseUsingSocks5('https://consent.youtube.com/s',session=session, method='POST', postPayload = consentPageParser.consentForm, username=socks5Username, password=socks5Password)
-            response = getHttpResponseUsingSocks5(url, session=session, username=socks5Username, password=socks5Password)
+            consentResponse = getHttpResponseUsingSocks5('https://consent.youtube.com/s',
+                    session=session, method='POST', 
+                    postPayload = consentPageParser.consentForm, username=socks5Username, 
+                    password=socks5Password)
+            response = getHttpResponseUsingSocks5(url, session=session, 
+                    username=socks5Username, password=socks5Password)
         else:
-            consentResponse = unProxiedGetHttpContent('https://consent.youtube.com/s', session=session, method = 'POST', postPayload = consentPageParser.consentForm)
+            consentResponse = unProxiedGetHttpContent('https://consent.youtube.com/s', 
+                    session=session, method = 'POST', 
+                    postPayload = consentPageParser.consentForm)
             response = unProxiedGetHttpContent(url, session = session)
     if response.status_code == 400:
         raise BadRequestException
@@ -314,12 +328,14 @@ def getYouTubeHtml(url, useTor):
 
 #use this function to get html for a youtube channel query
 def getChannelQueryHtml(query, useTor=False):
-    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAg%253D%253D'
+    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
+            '&sp=EgIQAg%253D%253D'
     return getYouTubeHtml(url, useTor)
 
 #use this function to get html for a youtube channel query
 def getVideoQueryHtml(query, useTor=False):
-    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAQ%253D%253D'
+    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
+            '&sp=EgIQAQ%253D%253D'
     return getYouTubeHtml(url, useTor=useTor)
 
 # if you have a channel url, you can use this function to extract the rss address
@@ -342,7 +358,8 @@ def getRssAddressFromChannelId(channelId):
 
 # use this function to get query results from searching for a channel
 def getChannelQueryResults(query, useTor=False):
-    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAg%253D%253D'
+    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
+            '&sp=EgIQAg%253D%253D'
     htmlContent = getChannelQueryHtml(url, useTor=useTor)
     parser = ChannelQueryParser()
     parser.feed(htmlContent)
@@ -350,7 +367,8 @@ def getChannelQueryResults(query, useTor=False):
 
 # use this function to get query results from searching for a video
 def getVideoQueryResults(query, useTor=False):
-    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAQ%253D%253D'
+    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
+            '&sp=EgIQAQ%253D%253D'
     htmlContent = getVideoQueryHtml(url, useTor=useTor)
     parser = VideoQueryParser()
     parser.feed(htmlContent)
@@ -370,7 +388,8 @@ def initiateYouTubeRssDatabase():
     database['title to id'] = {}
     return database
 
-def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False, useTor=False):
+def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False,
+        useTor=False):
     if channelId in database['feeds']:
         doNotify("Already subscribed to this channel!")
         return
@@ -422,9 +441,11 @@ def openUrlInMpv(url, useTor=False, maxResolution=1080):
         if useTor:
             command.append('torsocks')
             command.append('-i')
-        command += ['mpv', f'--ytdl-format=bestvideo[height=?{maxResolution}]+bestaudio/best']
+        command += ['mpv', \
+                f'--ytdl-format=bestvideo[height=?{maxResolution}]+bestaudio/best']
         command.append(url)
-        mpvProcess = subprocess.Popen(command, stdout = subprocess.DEVNULL, stderr = subprocess.STDOUT)
+        mpvProcess = subprocess.Popen(command, stdout = subprocess.DEVNULL, 
+                stderr = subprocess.STDOUT)
         mpvProcess.wait()
         result = mpvProcess.poll()
     except KeyboardInterrupt:
@@ -473,7 +494,8 @@ def doInteractiveSearchForVideo(database, useTor=False):
     querying = True
     while querying:
         try:
-            resultList = doWaitScreen("Getting video results...", getVideoQueryResults, query, useTor=useTor)
+            resultList = doWaitScreen("Getting video results...", getVideoQueryResults,
+                    query, useTor=useTor)
             if resultList:
                 result = doSelectionQuery(f"search results for {query}:", resultList)
                 url = f"http://youtube.com/watch?v={result.videoId}"
@@ -487,7 +509,8 @@ def doInteractiveSearchForVideo(database, useTor=False):
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                 querying = False
         except BadRequestException:
-            if not doYesNoQuery("YouTube rejected request as malformed. Try again? (usually works)"):
+            if not doYesNoQuery("YouTube rejected request as malformed. Try again? " + \
+                    "(usually works)"):
                 querying = False
             
 
@@ -496,16 +519,21 @@ def doInteractiveChannelSubscribe(database, useTor=False):
     querying = True
     while querying:
         try:
-            resultList = doWaitScreen("Getting channel results...", getChannelQueryResults, query, useTor=useTor)
+            resultList = doWaitScreen("Getting channel results...", 
+                    getChannelQueryResults, query, useTor=useTor)
             if resultList is not None:
-                result = doSelectionQuery(f"search results for {query}, choose which channel to supscribe to", resultList)
+                result = doSelectionQuery(f"search results for {query}, choose which " + \
+                        "channel to supscribe to", resultList)
                 refreshing = True
                 while refreshing:
                     try:
-                        doWaitScreen(f"getting data from feed for {result.title}...",addSubscriptionToDatabase,database, result.channelId, result.title, refresh=True, useTor=useTor)
+                        doWaitScreen(f"getting data from feed for {result.title}...",
+                                addSubscriptionToDatabase,database, result.channelId,
+                                result.title, refresh=True, useTor=useTor)
                         refreshing = False
                     except req.exceptions.ConnectionError:
-                        if not doYesNoQuery("Something went wrong with the connection. Try again?"):
+                        if not doYesNoQuery("Something went wrong with the " + \
+                                "connection. Try again?"):
                             querying = False
                             refreshing = False
                 outputDatabaseToFile(database, DATABASE_PATH)
@@ -525,7 +553,8 @@ def doInteractiveChannelUnsubscribe(database):
     if not channelTitleList:
         doNotify('You are not subscribed to any channels')
         return
-    channelTitle = doSelectionQuery("Which channel do you want to unsubscribe from?", channelTitleList)
+    channelTitle = doSelectionQuery("Which channel do you want to unsubscribe from?",
+            channelTitleList)
     removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
 
 def doShowSubscriptions(database):
@@ -541,11 +570,14 @@ def doInteractiveBrowseSubscriptions(database, useTor):
     if not channelMenuList:
         doNotify('You are not subscribed to any channels')
         return
-    channelTitle = doSelectionQuery("Which channel do you want to watch a video from?", channelMenuList)
+    channelTitle = doSelectionQuery("Which channel do you want to watch a video from?", 
+            channelMenuList)
     channelId = database['title to id'][channelTitle]
     videos = database['feeds'][channelId]
-    videosMenuList = [video['title'] + (' (unseen!)' if not video['seen'] else '') for video in videos]
-    video = videos[doSelectionQuery("Which video do you want to watch?", videosMenuList, indexChoice=True)]
+    videosMenuList = [video['title'] + (' (unseen!)' if not video['seen'] else '') for \
+            video in videos]
+    video = videos[doSelectionQuery("Which video do you want to watch?", videosMenuList, \
+        indexChoice=True)]
     videoUrl = video['link']
     result = playVideo(videoUrl, useTor)
     if not video['seen']:
@@ -555,11 +587,14 @@ def doInteractiveBrowseSubscriptions(database, useTor):
 
 def playVideo(videoUrl, useTor):
     resolutionMenuList = [1080, 720, 480, 240]
-    maxResolution = doSelectionQuery("Which maximum resolution do you want to use?", resolutionMenuList)
+    maxResolution = doSelectionQuery("Which maximum resolution do you want to use?",
+            resolutionMenuList)
     result = False
     while not result:
-        result = doWaitScreen("playing video...", openUrlInMpv, videoUrl, useTor=useTor, maxResolution=maxResolution)
-        if result or not doYesNoQuery(f"Something went wrong when playing the video. Try again?"):
+        result = doWaitScreen("playing video...", openUrlInMpv, videoUrl, useTor=useTor,
+                maxResolution=maxResolution)
+        if result or not doYesNoQuery(f"Something went wrong when playing the " + \
+                "video. Try again?"):
             break
     return result
 
@@ -571,7 +606,8 @@ def doRefreshSubscriptions(database, useTor=False):
     refreshing = True
     while refreshing:
         try:
-            doWaitScreen("refreshing subscriptions...", refreshSubscriptionsByChannelId, channelIdList, database, useTor=useTor)
+            doWaitScreen("refreshing subscriptions...", refreshSubscriptionsByChannelId,
+                    channelIdList, database, useTor=useTor)
             refreshing = False
         except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
@@ -594,7 +630,8 @@ if __name__ == '__main__':
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 result = sock.connect_ex(('127.0.0.1',9050))
             if result != 0:
-                if doYesNoQuery("Tor daemon not found on port 9050! Continue without tor?"):
+                if doYesNoQuery("Tor daemon not found on port 9050! " + \
+                        "Continue without tor?"):
                     useTor=False
                 else:
                     doNotify("Can't find Tor daemon. Exiting program.")
@@ -621,7 +658,9 @@ if __name__ == '__main__':
                 if chosenFunction is None:
                     exit()
                 # if function needs to know if Tor is used
-                elif chosenFunction in [doInteractiveBrowseSubscriptions, doInteractiveChannelSubscribe, doRefreshSubscriptions, doInteractiveSearchForVideo]:
+                elif chosenFunction in [doInteractiveBrowseSubscriptions,
+                        doInteractiveChannelSubscribe, doRefreshSubscriptions,
+                        doInteractiveSearchForVideo]:
                     chosenFunction(database, useTor)
                 # default case: choice only needs to use database
                 else:
