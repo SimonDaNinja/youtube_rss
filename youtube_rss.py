@@ -35,6 +35,7 @@ except:
     exit()
 import subprocess
 import os
+import time
 
 #############
 # constants #
@@ -134,6 +135,31 @@ class ChannelQueryObject:
 
     def __str__(self):
         return f"{self.title}  --  (channel ID {self.channelId})"
+
+class CircuitManager:
+    def __init__(self, nCircuits = 15, ttl = 600):
+        self.ttl = ttl
+        self.nCircuits = 15
+        self.i = 0
+        self.expiryTime = None
+        self.initiateCircuitAuths()
+
+    def initiateCircuitAuths(self):
+        self.circuitAuths=[generateNewSocks5Auth() for i in range(self.nCircuits)]
+
+    def getAuth(self):
+        # if circuits have never been used, start ttl timer
+        if self.expiryTime is None:
+            self.expiryTime = time.time() + self.ttl
+        # if ttl is over, reinitiate circuit auth list
+        elif self.expiryTime < time.time():
+            self.initiateCircuitAuths()
+            self.expiryTime = time.time() + self.ttl
+        # circulate over the various auths so that you don't use the same circuit all the
+        # time
+        self.i += 1
+        return self.circuitAuths[self.i%self.nCircuits]
+
 
 #############
 # functions #
@@ -269,12 +295,12 @@ def unProxiedGetHttpContent(url, session=None, method = 'GET', postPayload = {})
         elif method == 'POST':
             return session.post(url, postPayload)
 
-def getYouTubeHtml(url, useTor):
+def getYouTubeHtml(url, useTor, circuitManager):
     session = req.Session()
     # This cookie lets us avoid the YouTube consent page
     session.cookies['CONSENT']='YES+'
     if useTor:
-        socks5Username, socks5Password = generateNewSocks5Auth()
+        socks5Username, socks5Password = circuitManager.getAuth()
         response = getHttpResponseUsingSocks5(url, session=session, 
                 username=socks5Username, password=socks5Password)
     else:
@@ -283,16 +309,16 @@ def getYouTubeHtml(url, useTor):
     return response.text
 
 #use this function to get html for a youtube channel query
-def getChannelQueryHtml(query, useTor=False):
+def getChannelQueryHtml(query, useTor=False, circuitManager=None):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
             '&sp=EgIQAg%253D%253D'
-    return getYouTubeHtml(url, useTor)
+    return getYouTubeHtml(url, useTor, circuitManager)
 
 #use this function to get html for a youtube channel query
-def getVideoQueryHtml(query, useTor=False):
+def getVideoQueryHtml(query, useTor=False, circuitManager=None):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
             '&sp=EgIQAQ%253D%253D'
-    return getYouTubeHtml(url, useTor=useTor)
+    return getYouTubeHtml(url, useTor=useTor, circuitManager=circuitManager)
 
 # if you have a channel url, you can use this function to extract the rss address
 def getRssAddressFromChannelUrl(url, useTor=False):
@@ -313,27 +339,27 @@ def getRssAddressFromChannelId(channelId):
     return f"https://www.youtube.com/feeds/videos.xml?channel_id={channelId}"
 
 # use this function to get query results from searching for a channel
-def getChannelQueryResults(query, useTor=False):
+def getChannelQueryResults(query, useTor=False, circuitManager=None):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
             '&sp=EgIQAg%253D%253D'
-    htmlContent = getChannelQueryHtml(url, useTor=useTor)
+    htmlContent = getChannelQueryHtml(url, useTor=useTor, circuitManager=circuitManager)
     parser = ChannelQueryParser()
     parser.feed(htmlContent)
     return parser.resultList
 
 # use this function to get query results from searching for a video
-def getVideoQueryResults(query, useTor=False):
+def getVideoQueryResults(query, useTor=False, circuitManager=None):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
             '&sp=EgIQAQ%253D%253D'
-    htmlContent = getVideoQueryHtml(url, useTor=useTor)
+    htmlContent = getVideoQueryHtml(url, useTor=useTor, circuitManager=circuitManager)
     parser = VideoQueryParser()
     parser.feed(htmlContent)
     return parser.resultList
 
 # use this function to get rss entries from channel id
-def getRssEntriesFromChannelId(channelId, useTor=False):
+def getRssEntriesFromChannelId(channelId, useTor=False, circuitManager=None):
     rssAddress = getRssAddressFromChannelId(channelId)
-    rssContent = getYouTubeHtml(rssAddress, useTor)
+    rssContent = getYouTubeHtml(rssAddress, useTor, circuitManager=circuitManager)
     entries = feedparser.parse(rssContent)['entries']
     return entries
 
@@ -345,7 +371,7 @@ def initiateYouTubeRssDatabase():
     return database
 
 def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False,
-        useTor=False):
+        useTor=False, circuitManager=None):
     if channelId in database['feeds']:
         doNotify("Already subscribed to this channel!")
         return
@@ -353,7 +379,7 @@ def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False,
     database['id to title'][channelId] = channelTitle
     database['title to id'][channelTitle] = channelId
     if refresh:
-        refreshSubscriptionsByChannelId([channelId], database, useTor=useTor)
+        refreshSubscriptionsByChannelId([channelId], database, useTor=useTor, circuitManager=circuitManager)
 
 def removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle):
     if channelTitle not in database['title to id']:
@@ -370,11 +396,11 @@ def removeSubscriptionFromDatabaseByChannelId(database, channelId):
     outputDatabaseToFile(database, DATABASE_PATH)
 
 
-def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False):
+def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False, circuitManager=None):
     localFeeds = database['feeds']
     for channelId in channelIdList:
         localFeed = localFeeds[channelId]
-        remoteFeed = getRssEntriesFromChannelId(channelId, useTor=useTor)
+        remoteFeed = getRssEntriesFromChannelId(channelId, useTor=useTor, circuitManager=circuitManager)
         if remoteFeed is not None:
             remoteFeed.reverse()
             for entry in remoteFeed:
@@ -445,13 +471,13 @@ def outputDatabaseToFile(database, filename):
 Functions for controlling main flow of the application
 """
 
-def doInteractiveSearchForVideo(database, useTor=False):
+def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
     query = doGetUserInput("Search for video: ")
     querying = True
     while querying:
         try:
             resultList = doWaitScreen("Getting video results...", getVideoQueryResults,
-                    query, useTor=useTor)
+                    query, useTor=useTor, circuitManager=circuitManager)
             if resultList:
                 result = doSelectionQuery(f"search results for {query}:", resultList)
                 url = f"http://youtube.com/watch?v={result.videoId}"
@@ -466,13 +492,13 @@ def doInteractiveSearchForVideo(database, useTor=False):
                 querying = False
             
 
-def doInteractiveChannelSubscribe(database, useTor=False):
+def doInteractiveChannelSubscribe(database, useTor=False, circuitManager=None):
     query = doGetUserInput("Enter channel to search for: ")
     querying = True
     while querying:
         try:
             resultList = doWaitScreen("Getting channel results...", 
-                    getChannelQueryResults, query, useTor=useTor)
+                    getChannelQueryResults, query, useTor=useTor, circuitManager=circuitManager)
             if resultList is not None:
                 result = doSelectionQuery(f"search results for {query}, choose which " + \
                         "channel to supscribe to", resultList)
@@ -481,7 +507,8 @@ def doInteractiveChannelSubscribe(database, useTor=False):
                     try:
                         doWaitScreen(f"getting data from feed for {result.title}...",
                                 addSubscriptionToDatabase,database, result.channelId,
-                                result.title, refresh=True, useTor=useTor)
+                                result.title, refresh=True, useTor=useTor,
+                                circuitManager=circuitManager)
                         refreshing = False
                     except req.exceptions.ConnectionError:
                         if not doYesNoQuery("Something went wrong with the " + \
@@ -550,13 +577,13 @@ def playVideo(videoUrl, useTor):
 def doShowDatabase(database):
     doNotify(getDatabaseString(database))
 
-def doRefreshSubscriptions(database, useTor=False):
+def doRefreshSubscriptions(database, useTor=False, circuitManager=None):
     channelIdList = list(database['id to title'])
     refreshing = True
     while refreshing:
         try:
             doWaitScreen("refreshing subscriptions...", refreshSubscriptionsByChannelId,
-                    channelIdList, database, useTor=useTor)
+                    channelIdList, database, useTor=useTor, circuitManager=circuitManager)
             refreshing = False
         except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
@@ -576,6 +603,7 @@ if __name__ == '__main__':
 
         useTor = doYesNoQuery("Do you want to use tor?")
         if useTor:
+            circuitManager = CircuitManager()
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 result = sock.connect_ex(('127.0.0.1',9050))
             if result != 0:
@@ -585,6 +613,8 @@ if __name__ == '__main__':
                 else:
                     doNotify("Can't find Tor daemon. Exiting program.")
                     exit()
+        else:
+            circuitManager = None
 
         menuOptions =   {
                             "Search for video"          : doInteractiveSearchForVideo,
@@ -606,11 +636,13 @@ if __name__ == '__main__':
                 # if user wants to quit:
                 if chosenFunction is None:
                     exit()
+                # if function needs to know if Tor is used and needs a circuit manager
+                elif chosenFunction in [doInteractiveChannelSubscribe,
+                        doRefreshSubscriptions, doInteractiveSearchForVideo]:
+                    chosenFunction(database, useTor=useTor, circuitManager=circuitManager)
                 # if function needs to know if Tor is used
-                elif chosenFunction in [doInteractiveBrowseSubscriptions,
-                        doInteractiveChannelSubscribe, doRefreshSubscriptions,
-                        doInteractiveSearchForVideo]:
-                    chosenFunction(database, useTor)
+                elif chosenFunction in [doInteractiveBrowseSubscriptions]:
+                    chosenFunction(database, useTor = useTor)
                 # default case: choice only needs to use database
                 else:
                     chosenFunction(database)
