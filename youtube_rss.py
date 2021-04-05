@@ -297,6 +297,7 @@ def unProxiedGetHttpContent(url, session=None, method = 'GET', postPayload = {})
 
 def getYouTubeHtml(url, useTor, circuitManager):
     session = req.Session()
+    session.headers['Accept-Language']='en-US'
     # This cookie lets us avoid the YouTube consent page
     session.cookies['CONSENT']='YES+'
     if useTor:
