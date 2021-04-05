@@ -52,7 +52,7 @@ NOT_HIGHLIGHTED = 2
 ###########
 
 # error classes
-class MalformedRequestException(Exception):
+class BadRequestException(Exception):
     pass
 
 # parser classes #
@@ -285,64 +285,47 @@ def unProxiedGetHttpContent(url, session=None, method = 'GET', postPayload = {})
         elif method == 'POST':
             return session.post(url, postPayload)
 
-#use this function to get html for a youtube channel query
-def getChannelQueryHtml(query, getHttpContent = unProxiedGetHttpContent):
-    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAg%253D%253D'
+def getYouTubeHtml(url, useTor):
     session = req.Session()
-    if getHttpContent == getHttpResponseUsingSocks5:
-        # these aren't sensitive data - they're just used by the local tor daemon for
-        # stream isolation
+    if useTor:
         socks5Username, socks5Password = generateNewSocks5Auth()
-        response = getHttpContent(url, session=session, username=socks5Username, password=socks5Password)
+        response = getHttpResponseUsingSocks5(url, session=session, username=socks5Username, password=socks5Password)
     else:
-        response = getHttpContent(url, session=session)
+        response = unProxiedGetHttpContent(url, session=session)
+
     # youtube demands we accept tracking cookies. Since we'll throw the cookies
     # away right after we've gotten the search results we want, it's harmless
     if 'consent.youtube.com' in response.url:
         consentContent = response.text
         consentPageParser = ConsentPageParser()
         consentPageParser.feed(consentContent)
-        if getHttpContent == getHttpResponseUsingSocks5:
-            consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm, username=socks5Username, password=socks5Password)
-            response = getHttpContent(url, session=session, username=socks5Username, password=socks5Password)
+        if useTor:
+            # we use the same tor circuit again; we're just trying to reach the
+            # same content anyway, and the temporarily accepted cookies kind of
+            # defeat the purpose of using a different circuit
+            consentResponse = getHttpResponseUsingSocks5('https://consent.youtube.com/s',session=session, method='POST', postPayload = consentPageParser.consentForm, username=socks5Username, password=socks5Password)
+            response = getHttpResponseUsingSocks5(url, session=session, username=socks5Username, password=socks5Password)
         else:
-            consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
-            response = getHttpContent(url, session=session)
-        if consentResponse.status_code == 400:
-            raise MalformedRequestException
+            consentResponse = unProxiedGetHttpContent('https://consent.youtube.com/s', session=session, method = 'POST', postPayload = consentPageParser.consentForm)
+            response = unProxiedGetHttpContent(url, session = session)
+    if response.status_code == 400:
+        raise BadRequestException
     return response.text
 
 #use this function to get html for a youtube channel query
-def getVideoQueryHtml(query, getHttpContent = req.get):
+def getChannelQueryHtml(query, useTor=False):
+    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAg%253D%253D'
+    return getYouTubeHtml(url, useTor)
+
+#use this function to get html for a youtube channel query
+def getVideoQueryHtml(query, useTor=False):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAQ%253D%253D'
-    session = req.Session()
-    if getHttpContent == getHttpResponseUsingSocks5:
-        # these aren't sensitive data - they're just used by the local tor daemon for
-        # stream isolation
-        socks5Username, socks5Password = generateNewSocks5Auth()
-        response = getHttpContent(url, session=session, username=socks5Username, password=socks5Password)
-    else:
-        response = getHttpContent(url, session=session)
-    # youtube demands we accept tracking cookies. Since we'll throw the cookies
-    # away right after we've gotten the search results we want, it's harmless
-    if 'consent.youtube.com' in response.url:
-        consentContent = response.text
-        consentPageParser = ConsentPageParser()
-        consentPageParser.feed(consentContent)
-        if getHttpContent == getHttpResponseUsingSocks5:
-            consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm, username=socks5Username, password=socks5Password)
-            response = getHttpContent(url, session=session, username=socks5Username, password=socks5Password)
-        else:
-            consentResponse = getHttpContent('https://consent.youtube.com/s', session=session, method='POST', postPayload = consentPageParser.consentForm)
-            response = getHttpContent(url, session=session)
-        if consentResponse.status_code == 400:
-            raise MalformedRequestException
-    return response.text
+    return getYouTubeHtml(url, useTor=useTor)
 
 # if you have a channel url, you can use this function to extract the rss address
-def getRssAddressFromChannelUrl(url, getHttpContent = unProxiedGetHttpContent):
+def getRssAddressFromChannelUrl(url, useTor=False):
     try:
-        response = getHttpContent(url)
+        response = getYouTubeHtml(url, useTor=useTor)
     except req.exceptions.ConnectionError:
         return None
     if response.text is not None:
@@ -358,35 +341,27 @@ def getRssAddressFromChannelId(channelId):
     return f"https://www.youtube.com/feeds/videos.xml?channel_id={channelId}"
 
 # use this function to get query results from searching for a channel
-def getChannelQueryResults(query, getHttpContent = unProxiedGetHttpContent):
-    htmlContent = getChannelQueryHtml(query, getHttpContent = getHttpContent)
-    if htmlContent is not None:
-        parser = ChannelQueryParser()
-        parser.feed(htmlContent)
-        return parser.resultList
-    else:
-        return None
+def getChannelQueryResults(query, useTor=False):
+    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAg%253D%253D'
+    htmlContent = getChannelQueryHtml(url, useTor=useTor)
+    parser = ChannelQueryParser()
+    parser.feed(htmlContent)
+    return parser.resultList
 
 # use this function to get query results from searching for a video
-def getVideoQueryResults(query, getHttpContent = req.get):
-    htmlContent = getVideoQueryHtml(query, getHttpContent = getHttpContent)
+def getVideoQueryResults(query, useTor=False):
+    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + '&sp=EgIQAQ%253D%253D'
+    htmlContent = getVideoQueryHtml(url, useTor=useTor)
     parser = VideoQueryParser()
     parser.feed(htmlContent)
     return parser.resultList
 
 # use this function to get rss entries from channel id
-def getRssEntriesFromChannelId(channelId, getHttpContent = unProxiedGetHttpContent):
+def getRssEntriesFromChannelId(channelId, useTor=False):
     rssAddress = getRssAddressFromChannelId(channelId)
-    try:
-        response = getHttpContent(rssAddress)
-    except req.exceptions.ConnectionError:
-        return None
-    if response.text is not None:
-        rssContent = response.text
-        entries = feedparser.parse(rssContent)['entries']
-        return entries
-    else:
-        return None
+    rssContent = getYouTubeHtml(rssAddress, useTor)
+    entries = feedparser.parse(rssContent)['entries']
+    return entries
 
 def initiateYouTubeRssDatabase():
     database = {}
@@ -395,7 +370,7 @@ def initiateYouTubeRssDatabase():
     database['title to id'] = {}
     return database
 
-def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False, getHttpContent=unProxiedGetHttpContent):
+def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False, useTor=False):
     if channelId in database['feeds']:
         doNotify("Already subscribed to this channel!")
         return
@@ -403,7 +378,7 @@ def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False, 
     database['id to title'][channelId] = channelTitle
     database['title to id'][channelTitle] = channelId
     if refresh:
-        refreshSubscriptionsByChannelId([channelId], database, getHttpContent=getHttpContent)
+        refreshSubscriptionsByChannelId([channelId], database, useTor=useTor)
 
 def removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle):
     if channelTitle not in database['title to id']:
@@ -420,11 +395,11 @@ def removeSubscriptionFromDatabaseByChannelId(database, channelId):
     outputDatabaseToFile(database, DATABASE_PATH)
 
 
-def refreshSubscriptionsByChannelId(channelIdList, database, getHttpContent=unProxiedGetHttpContent):
+def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False):
     localFeeds = database['feeds']
     for channelId in channelIdList:
         localFeed = localFeeds[channelId]
-        remoteFeed = getRssEntriesFromChannelId(channelId, getHttpContent=getHttpContent)
+        remoteFeed = getRssEntriesFromChannelId(channelId, useTor=useTor)
         if remoteFeed is not None:
             remoteFeed.reverse()
             for entry in remoteFeed:
@@ -493,12 +468,12 @@ def outputDatabaseToFile(database, filename):
 Functions for controlling main flow of the application
 """
 
-def doInteractiveSearchForVideo(database, getHttpContent=unProxiedGetHttpContent, useTor=False):
+def doInteractiveSearchForVideo(database, useTor=False):
     query = doGetUserInput("Search for video: ")
     querying = True
     while querying:
         try:
-            resultList = doWaitScreen("Getting video results...", getVideoQueryResults, query, getHttpContent=getHttpContent)
+            resultList = doWaitScreen("Getting video results...", getVideoQueryResults, query, useTor=useTor)
             if resultList:
                 result = doSelectionQuery(f"search results for {query}:", resultList)
                 url = f"http://youtube.com/watch?v={result.videoId}"
@@ -511,33 +486,37 @@ def doInteractiveSearchForVideo(database, getHttpContent=unProxiedGetHttpContent
         except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                 querying = False
-        except MalformedRequestException:
+        except BadRequestException:
             if not doYesNoQuery("YouTube rejected request as malformed. Try again? (usually works)"):
                 querying = False
             
 
-def doInteractiveChannelSubscribe(database, getHttpContent=unProxiedGetHttpContent):
+def doInteractiveChannelSubscribe(database, useTor=False):
     query = doGetUserInput("Enter channel to search for: ")
     querying = True
     while querying:
         try:
-            resultList = doWaitScreen("Getting channel results...", getChannelQueryResults, query, getHttpContent=getHttpContent)
-            result = doSelectionQuery(f"search results for {query}, choose which channel to supscribe to", resultList)
-            refreshing = True
-            while refreshing:
-                try:
-                    doWaitScreen(f"getting data from feed for {result.title}...",addSubscriptionToDatabase,database, result.channelId, result.title, refresh=True, getHttpContent = getHttpContent)
-                    refreshing = False
-                except req.exceptions.ConnectionError:
-                    if not doYesNoQuery("Something went wrong with the connection. Try again?"):
-                        querying = False
+            resultList = doWaitScreen("Getting channel results...", getChannelQueryResults, query, useTor=useTor)
+            if resultList is not None:
+                result = doSelectionQuery(f"search results for {query}, choose which channel to supscribe to", resultList)
+                refreshing = True
+                while refreshing:
+                    try:
+                        doWaitScreen(f"getting data from feed for {result.title}...",addSubscriptionToDatabase,database, result.channelId, result.title, refresh=True, useTor=useTor)
                         refreshing = False
-            outputDatabaseToFile(database, DATABASE_PATH)
-            querying = False
+                    except req.exceptions.ConnectionError:
+                        if not doYesNoQuery("Something went wrong with the connection. Try again?"):
+                            querying = False
+                            refreshing = False
+                outputDatabaseToFile(database, DATABASE_PATH)
+                querying = False
+            else:
+                if not doYesNoQuery("No results found. Try again?"):
+                    querying = False
         except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                 querying = False
-        except MalformedRequestException:
+        except BadRequestException:
             if not doYesNoQuery("YouTube rejected request. Try again? (usually works)"):
                 querying = False
 
@@ -587,15 +566,16 @@ def playVideo(videoUrl, useTor):
 def doShowDatabase(database):
     doNotify(getDatabaseString(database))
 
-def doRefreshSubscriptions(database, getHttpContent = unProxiedGetHttpContent):
+def doRefreshSubscriptions(database, useTor=False):
     channelIdList = list(database['id to title'])
     refreshing = True
     while refreshing:
-        if not doWaitScreen("refreshing subscriptions...", refreshSubscriptionsByChannelId, channelIdList, database, getHttpContent = getHttpContent):
+        try:
+            doWaitScreen("refreshing subscriptions...", refreshSubscriptionsByChannelId, channelIdList, database, useTor=useTor)
+            refreshing = False
+        except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                 refreshing = False
-        else:
-            refreshing = False
     outputDatabaseToFile(database, DATABASE_PATH)
 
 # main section (demonstration of tools)
@@ -613,16 +593,12 @@ if __name__ == '__main__':
         if useTor:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 result = sock.connect_ex(('127.0.0.1',9050))
-            if result == 0:
-                getHttpContent = getHttpResponseUsingSocks5
-            else:
+            if result != 0:
                 if doYesNoQuery("Tor daemon not found on port 9050! Continue without tor?"):
-                    getHttpContent = unProxiedGetHttpContent
+                    useTor=False
                 else:
                     doNotify("Can't find Tor daemon. Exiting program.")
                     exit()
-        else:
-            getHttpContent = unProxiedGetHttpContent
 
         menuOptions =   {
                             "Search for video"          : doInteractiveSearchForVideo,
@@ -644,14 +620,9 @@ if __name__ == '__main__':
                 # if user wants to quit:
                 if chosenFunction is None:
                     exit()
-                # if function needs an http get method
-                elif chosenFunction in [doInteractiveChannelSubscribe, doRefreshSubscriptions]:
-                    chosenFunction(database, getHttpContent)
                 # if function needs to know if Tor is used
-                elif chosenFunction in [doInteractiveBrowseSubscriptions]:
+                elif chosenFunction in [doInteractiveBrowseSubscriptions, doInteractiveChannelSubscribe, doRefreshSubscriptions, doInteractiveSearchForVideo]:
                     chosenFunction(database, useTor)
-                elif chosenFunction in [doInteractiveSearchForVideo]:
-                    chosenFunction(database, useTor = useTor, getHttpContent=getHttpContent)
                 # default case: choice only needs to use database
                 else:
                     chosenFunction(database)
