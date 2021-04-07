@@ -309,18 +309,6 @@ def getYouTubeHtml(url, useTor, circuitManager):
 
     return response.text
 
-#use this function to get html for a youtube channel query
-def getChannelQueryHtml(query, useTor=False, circuitManager=None):
-    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
-            '&sp=EgIQAg%253D%253D'
-    return getYouTubeHtml(url, useTor, circuitManager)
-
-#use this function to get html for a youtube channel query
-def getVideoQueryHtml(query, useTor=False, circuitManager=None):
-    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
-            '&sp=EgIQAQ%253D%253D'
-    return getYouTubeHtml(url, useTor=useTor, circuitManager=circuitManager)
-
 # if you have a channel url, you can use this function to extract the rss address
 def getRssAddressFromChannelUrl(url, useTor=False):
     try:
@@ -343,7 +331,8 @@ def getRssAddressFromChannelId(channelId):
 def getChannelQueryResults(query, useTor=False, circuitManager=None):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
             '&sp=EgIQAg%253D%253D'
-    htmlContent = getChannelQueryHtml(url, useTor=useTor, circuitManager=circuitManager)
+    htmlContent = getYouTubeHtml(url, useTor=useTor, circuitManager=circuitManager)
+    open('log','w').write(htmlContent)
     parser = ChannelQueryParser()
     parser.feed(htmlContent)
     return parser.resultList
@@ -352,7 +341,7 @@ def getChannelQueryResults(query, useTor=False, circuitManager=None):
 def getVideoQueryResults(query, useTor=False, circuitManager=None):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
             '&sp=EgIQAQ%253D%253D'
-    htmlContent = getVideoQueryHtml(url, useTor=useTor, circuitManager=circuitManager)
+    htmlContent = getYouTubeHtml(url, useTor=useTor, circuitManager=circuitManager)
     parser = VideoQueryParser()
     parser.feed(htmlContent)
     return parser.resultList
