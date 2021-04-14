@@ -332,7 +332,6 @@ def getChannelQueryResults(query, useTor=False, circuitManager=None):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
             '&sp=EgIQAg%253D%253D'
     htmlContent = getYouTubeHtml(url, useTor=useTor, circuitManager=circuitManager)
-    open('log','w').write(htmlContent)
     parser = ChannelQueryParser()
     parser.feed(htmlContent)
     return parser.resultList
