@@ -124,7 +124,8 @@ class VideoQueryParser(HTMLParser):
 Indicator classes
 """
 
-# returned from menu method to indicate that the menu should not be reiterated
+# returned from menu method to indicate whether application flow should step
+# closer to the root menu
 class ReturnFromMenu:
     pass
 
