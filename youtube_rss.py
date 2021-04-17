@@ -530,7 +530,7 @@ def doInteractiveChannelSubscribe(database, useTor=False, circuitManager=None):
         try:
             resultList = doWaitScreen("Getting channel results...", 
                     getChannelQueryResults, query, useTor=useTor, circuitManager=circuitManager)
-            if resultList is not None:
+            if resultList is not None and resultList:
                 menuOptions = [
                     MethodMenuDecision(
                         str(result),
@@ -543,7 +543,7 @@ def doInteractiveChannelSubscribe(database, useTor=False, circuitManager=None):
                     for result in resultList
                 ]
                 menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
-                doMethodMenu(f"search results for {query}, choose which " + \
+                doMethodMenu(f"search results for '{query}', choose which " + \
                         "channel to supscribe to", menuOptions)
                 querying = False
             else:
