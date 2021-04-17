@@ -130,7 +130,7 @@ class IndicatorClass:
         raise InstantiateIndicatorClassError
 
 
-# returned from menu method to indicate whether application flow should step
+# returned from menu method to indicate that application flow should step
 # closer to the root menu
 class ReturnFromMenu(IndicatorClass):
     pass
