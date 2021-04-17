@@ -160,6 +160,15 @@ class CircuitManager:
         self.i += 1
         return self.circuitAuths[self.i%self.nCircuits]
 
+class MainMenuDecision:
+    def __init__(self, function, *args, **kwargs):
+        self.function = function
+        self.args = args
+        self.kwargs = kwargs
+
+    def executeDecision(self):
+        self.function(*self.args, **self.kwargs)
+
 
 #############
 # functions #
@@ -550,7 +559,7 @@ def doInteractiveBrowseSubscriptions(database, useTor):
         outputDatabaseToFile(database, DATABASE_PATH)
 
 
-def playVideo(videoUrl, useTor):
+def playVideo(videoUrl, useTor=False):
     resolutionMenuList = [1080, 720, 480, 240]
     maxResolution = doSelectionQuery("Which maximum resolution do you want to use?",
             resolutionMenuList)
@@ -606,37 +615,36 @@ if __name__ == '__main__':
             circuitManager = None
 
         menuOptions =   {
-                            "Search for video"          : doInteractiveSearchForVideo,
-                            "Refresh subscriptions"     : doRefreshSubscriptions,
-                            "Browse subscriptions"      : doInteractiveBrowseSubscriptions,
-                            "Subscribe to new channel"  : doInteractiveChannelSubscribe,
-                            "Unsubscribe from channel"  : doInteractiveChannelUnsubscribe,
+                            "Search for video"          : MainMenuDecision( doInteractiveSearchForVideo,
+                                                                            database,
+                                                                            useTor=useTor,
+                                                                            circuitManager=circuitManager),
+                            "Refresh subscriptions"     : MainMenuDecision( doRefreshSubscriptions,
+                                                                            database,
+                                                                            useTor=useTor,
+                                                                            circuitManager=circuitManager),
+                            "Browse subscriptions"      : MainMenuDecision( doInteractiveBrowseSubscriptions,
+                                                                            database,
+                                                                            useTor = useTor),
+                            "Subscribe to new channel"  : MainMenuDecision( doInteractiveChannelSubscribe,
+                                                                            database,
+                                                                            useTor=useTor,
+                                                                            circuitManager=circuitManager),
+                            "Unsubscribe from channel"  : MainMenuDecision( doInteractiveChannelUnsubscribe,
+                                                                            database),
                             "Quit"                      : None
                         }
 
         menuList = list(menuOptions)
 
         while True:
-            choice = doSelectionQuery("What do you want to do?", menuList)
-            chosenFunction = menuOptions[choice]
-
+            mainMenuDecisionKey = doSelectionQuery("What do you want to do?", menuList)
+            mainMenuDecision = menuOptions[mainMenuDecisionKey]
+            if mainMenuDecision is None:
+                exit()
             try:
-                # handle special cases #
-                # if user wants to quit:
-                if chosenFunction is None:
-                    exit()
-                # if function needs to know if Tor is used and needs a circuit manager
-                elif chosenFunction in [doInteractiveChannelSubscribe,
-                        doRefreshSubscriptions, doInteractiveSearchForVideo]:
-                    chosenFunction(database, useTor=useTor, circuitManager=circuitManager)
-                # if function needs to know if Tor is used
-                elif chosenFunction in [doInteractiveBrowseSubscriptions]:
-                    chosenFunction(database, useTor = useTor)
-                # default case: choice only needs to use database
-                else:
-                    chosenFunction(database)
+                mainMenuDecision.executeDecision()
             except KeyboardInterrupt:
                 pass
     except KeyboardInterrupt:
-        print("")
         exit()
