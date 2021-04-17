@@ -230,7 +230,7 @@ def doWaitScreenNcurses(stdscr, message, waitFunction, *args, **kwargs):
     curses.curs_set(0)
     curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
-    printMenu(message, [], stdscr, 0)
+    printMenu(message, [], stdscr, 0, showItemNumber=False)
     return waitFunction(*args, **kwargs)
 
 def doYesNoQuery(query):
@@ -238,30 +238,46 @@ def doYesNoQuery(query):
 
 def doYnQueryNcurses(stdscr, query):
     choiceIndex = 0
-    return doSelectionQueryNcurses(stdscr, query, ['yes','no'])=='yes'
+    return doSelectionQueryNcurses(stdscr, query, ['yes','no'], showItemNumber=False)=='yes'
 
-def doSelectionQuery(query, options, queryStyle=ItemQuery, initialIndex=None):
+def doSelectionQuery(query, options, queryStyle=ItemQuery, initialIndex=None,
+        showItemNumber=True):
     return curses.wrapper(doSelectionQueryNcurses, query, options, 
-            queryStyle=queryStyle, initialIndex=initialIndex)
+            queryStyle=queryStyle, initialIndex=initialIndex,
+            showItemNumber=showItemNumber)
 
 def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery, 
-        initialIndex=None):
+        initialIndex=None, showItemNumber=True):
     curses.curs_set(0)
     curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
+    jumpNumList = []
     if initialIndex is not None:
         choiceIndex = initialIndex
     else:
         choiceIndex = 0
     while True:
-        printMenu(query, options, stdscr, choiceIndex)
+        printMenu(query, options, stdscr, choiceIndex, showItemNumber=showItemNumber,
+                jumpNumStr = ''.join(jumpNumList))
         key = stdscr.getch()
         if key == curses.KEY_UP:
+            jumpNumList = []
             choiceIndex = (choiceIndex-1)%len(options)
         elif key == curses.KEY_DOWN:
+            jumpNumList = []
             choiceIndex = (choiceIndex+1)%len(options)
+        elif key in [ord(digit) for digit in '1234567890']:
+            if len(jumpNumList) < 6:
+                jumpNumList.append(chr(key))
+        elif key == curses.KEY_BACKSPACE:
+            if jumpNumList:
+                jumpNumList.pop()
         elif key in [curses.KEY_ENTER, 10, 13]:
-            if queryStyle is ItemQuery:
+            if jumpNumList:
+                jumpNum = int(''.join(jumpNumList))
+                choiceIndex = min(jumpNum-1, len(options))
+                jumpNumList = []
+            elif queryStyle is ItemQuery:
                 return options[choiceIndex]
             elif queryStyle is IndexQuery:
                 return choiceIndex
@@ -271,7 +287,7 @@ def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery,
                 raise UnknownQueryStyle
     
 def doNotify(message):
-    doSelectionQuery(message, ['ok'])
+    doSelectionQuery(message, ['ok'], showItemNumber=False)
 
 def doGetUserInput(query, maxInputLength=40):
     return curses.wrapper(doGetUserInputNcurses, query, maxInputLength=maxInputLength)
@@ -286,7 +302,7 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
     userInputChars = []
     while True:
         printMenu(query, [''.join(userInputChars)], stdscr, 0,
-                xAlignment=maxInputLength//2)
+                xAlignment=maxInputLength//2, showItemNumber=False)
         key = stdscr.getch()
         if key == curses.KEY_BACKSPACE:
             if userInputChars: userInputChars.pop()
@@ -295,7 +311,7 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
         elif key in validChars and len(userInputChars) < maxInputLength:
             userInputChars.append(chr(key))
 
-def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
+def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=True, jumpNumStr=''):
     stdscr.clear()
     height, width = stdscr.getmaxyx()
     screenCenterX = width//2
@@ -319,6 +335,10 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
     else:
         offset = 0
 
+    jumpNumStr = jumpNumStr[:min(len(jumpNumStr), width)]
+    if jumpNumStr:
+        stdscr.addstr(0,0,jumpNumStr)
+
     titleX = max(screenCenterX-(len(query)//2),0)
     if titleX != 0:
         titleX = max(min(abs(titleX), width)*(titleX//abs(titleX)),0)
@@ -328,7 +348,7 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None):
     if titleY >0 and titleY<height:
         stdscr.addstr(titleY, titleX, query)
     for i, item in enumerate(menu):
-        itemString = str(item)
+        itemString = f"{i+1}: {item}" if showItemNumber else str(item)
         if len(itemString) > width:
             itemString = itemString[:(2*len(itemString)-width)]
         attr = curses.color_pair(HIGHLIGHTED if i == choiceIndex else NOT_HIGHLIGHTED)
