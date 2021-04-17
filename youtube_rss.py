@@ -321,40 +321,41 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=
     if xAlignment is not None:
         itemX = screenCenterX - xAlignment
     elif menu:
-        menuWidth = max([len(str(item)) for item in menu])
-        itemX = screenCenterX - menuWidth//2
+        menuWidth = max([len(f"{i+1}: {item}" if showItemNumber else str(item)) for i, 
+            item in enumerate(menu)])
+        itemX = max(screenCenterX - menuWidth//2, 0)
     else:
         itemX = None
     
     if itemX != 0 and itemX is not None:
         itemX = max(min(abs(itemX), width)*(itemX//abs(itemX)),0)
 
-    if nRowsToPrint >= height:
+    if nRowsToPrint >= height-1:
         ySelected = screenCenterY - nRowsToPrint + choiceIndex + 2
         offset = (ySelected - screenCenterY)
     else:
         offset = 0
 
-    jumpNumStr = jumpNumStr[:min(len(jumpNumStr), width)]
+    jumpNumStr = jumpNumStr[:max(min(len(jumpNumStr), width-1),0)]
     if jumpNumStr:
         stdscr.addstr(0,0,jumpNumStr)
 
     titleX = max(screenCenterX-(len(query)//2),0)
     if titleX != 0:
         titleX = max(min(abs(titleX), width)*(titleX//abs(titleX)),0)
-    if len(query) >= width:
+    if len(query) >= width-1:
         query = query[0:width-1]
     titleY = screenCenterY-nRowsToPrint - offset
-    if titleY >0 and titleY<height:
+    if titleY > 0 and titleY<=height-1:
         stdscr.addstr(titleY, titleX, query)
     for i, item in enumerate(menu):
         itemString = f"{i+1}: {item}" if showItemNumber else str(item)
-        if len(itemString) > width:
-            itemString = itemString[:(2*len(itemString)-width)]
+        if itemX + len(itemString) >= width-1:
+            itemString = itemString[:max((width-itemX-2),0)]
         attr = curses.color_pair(HIGHLIGHTED if i == choiceIndex else NOT_HIGHLIGHTED)
         stdscr.attron(attr)
         itemY = screenCenterY - nRowsToPrint + i + 2 - offset
-        if itemY >0 and itemY<height:
+        if itemY > 0 and itemY <= height-1 and itemString:
             stdscr.addstr(itemY, itemX, itemString)
         stdscr.attroff(attr)
     stdscr.refresh()
