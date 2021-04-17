@@ -275,7 +275,7 @@ def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery,
         elif key in [curses.KEY_ENTER, 10, 13]:
             if jumpNumList:
                 jumpNum = int(''.join(jumpNumList))
-                choiceIndex = min(jumpNum-1, len(options))
+                choiceIndex = min(jumpNum-1, len(options)-1)
                 jumpNumList = []
             elif queryStyle is ItemQuery:
                 return options[choiceIndex]
