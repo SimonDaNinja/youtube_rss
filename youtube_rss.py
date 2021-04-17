@@ -180,6 +180,21 @@ class MethodMenuDecision:
 class ReturnFromMenu:
     pass
 
+class QueryStyle:
+    pass
+
+class IndexQuery(QueryStyle):
+    pass
+
+class ItemQuery(QueryStyle):
+    pass
+
+class CombinedQuery(QueryStyle):
+    pass
+
+class UnknownQueryStyle(Exception):
+    pass
+
 
 #############
 # functions #
@@ -190,9 +205,11 @@ Functions for presentation
 """
 
 def doMethodMenu(query, menuOptions):
+    index = 0
     try:
         while True:
-            methodMenuDecision = doSelectionQuery(query, menuOptions)
+            methodMenuDecision, index = doSelectionQuery(query, menuOptions, 
+                    initialIndex=index, queryStyle=CombinedQuery)
             try:
                 result = methodMenuDecision.executeDecision()
             except KeyboardInterrupt:
@@ -223,14 +240,18 @@ def doYnQueryNcurses(stdscr, query):
     choiceIndex = 0
     return doSelectionQueryNcurses(stdscr, query, ['yes','no'])=='yes'
 
-def doSelectionQuery(query, options, indexChoice=False):
-    return curses.wrapper(doSelectionQueryNcurses, query, options, indexChoice=indexChoice)
+def doSelectionQuery(query, options, queryStyle=ItemQuery, initialIndex=None):
+    return curses.wrapper(doSelectionQueryNcurses, query, options, 
+            queryStyle=queryStyle, initialIndex=initialIndex)
 
-def doSelectionQueryNcurses(stdscr, query, options, indexChoice=False):
+def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery, initialIndex=None):
     curses.curs_set(0)
     curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
-    choiceIndex = 0
+    if initialIndex is not None:
+        choiceIndex = initialIndex
+    else:
+        choiceIndex = 0
     while True:
         printMenu(query, options, stdscr, choiceIndex)
         key = stdscr.getch()
@@ -239,7 +260,14 @@ def doSelectionQueryNcurses(stdscr, query, options, indexChoice=False):
         elif key == curses.KEY_DOWN:
             choiceIndex = (choiceIndex+1)%len(options)
         elif key in [curses.KEY_ENTER, 10, 13]:
-            return choiceIndex if indexChoice else options[choiceIndex]
+            if queryStyle is ItemQuery:
+                return options[choiceIndex]
+            elif queryStyle is IndexQuery:
+                return choiceIndex
+            elif queryStyle is CombinedQuery:
+                return options[choiceIndex], choiceIndex
+            else:
+                raise UnknownQueryStyle
     
 def doNotify(message):
     doSelectionQuery(message, ['ok'])
