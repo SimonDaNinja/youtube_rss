@@ -339,7 +339,9 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=
     if nRowsToPrint >= height-2:
         yTitleTheoretical = screenCenterY - nRowsToPrint//2
         ySelectedTheoretical = (yTitleTheoretical + 2 + choiceIndex)
-        offset = max(ySelectedTheoretical-screenCenterY, yTitleTheoretical)
+        yLastTheoretical = yTitleTheoretical + nRowsToPrint-1
+        offset = min(max(ySelectedTheoretical-screenCenterY, yTitleTheoretical), 
+                yLastTheoretical - (height-2))
     titleY -= offset
 
     titleX = max(screenCenterX-(len(query)//2),0)
