@@ -52,7 +52,9 @@ NOT_HIGHLIGHTED = 2
 # classes #
 ###########
 
-# parser classes #
+"""
+Parser classes
+"""
 
 # Parser used for extracting an RSS Address from channel page HTML
 class RssAddressParser(HTMLParser):
@@ -118,8 +120,43 @@ class VideoQueryParser(HTMLParser):
                     resultList.append(VideoQueryObject(videoId = tup[0], title = tup[1]))
                 self.resultList = resultList
 
-# other classes #
+"""
+Indicator classes
+"""
 
+# returned from menu method to indicate that the menu should not be reiterated
+class ReturnFromMenu:
+    pass
+
+# indicates whether selection query should return by index, item or both
+class QueryStyle:
+    pass
+
+# indicates that selection query should return by index
+class IndexQuery(QueryStyle):
+    pass
+
+# indicates that selection query should return by item
+class ItemQuery(QueryStyle):
+    pass
+
+# indicates that selection query should return by both item and index
+class CombinedQuery(QueryStyle):
+    pass
+
+"""
+Exception classes
+"""
+
+# indicates that the provided query style is not supported
+class UnknownQueryStyle(Exception):
+    pass
+
+"""
+Other classes
+"""
+
+# contains information from one result item from video query
 class VideoQueryObject:
     def __init__(self, videoId = None, title = None):
         self.videoId   = videoId
@@ -132,6 +169,7 @@ class VideoQueryObject:
     def __str__(self):
         return f"{self.title}"
 
+# contains information from one result item from channel query
 class ChannelQueryObject:
     def __init__(self, channelId = None, title = None):
         self.channelId = channelId
@@ -140,6 +178,7 @@ class ChannelQueryObject:
     def __str__(self):
         return f"{self.title}  --  (channel ID {self.channelId})"
 
+# manages socks5 auths used for Tor stream isolation
 class CircuitManager:
     def __init__(self, nCircuits = 15, ttl = 600):
         self.ttl = ttl
@@ -164,36 +203,22 @@ class CircuitManager:
         self.i += 1
         return self.circuitAuths[self.i%self.nCircuits]
 
+# item of the sort provided in list to doMethodMenu; it is provided a description of an
+# option presented to the user, a function that will be executed if chosen by the user,
+# and all arguments that the function needs
 class MethodMenuDecision:
-    def __init__(self, string, function, *args, **kwargs):
+    def __init__(self, description, function, *args, **kwargs):
         self.function = function
         self.args = args
         self.kwargs = kwargs
-        self.string = string
+        self.description = description
 
     def __str__(self):
-        return self.string
+        return self.description
 
     def executeDecision(self):
         return self.function(*self.args, **self.kwargs)
 
-class ReturnFromMenu:
-    pass
-
-class QueryStyle:
-    pass
-
-class IndexQuery(QueryStyle):
-    pass
-
-class ItemQuery(QueryStyle):
-    pass
-
-class CombinedQuery(QueryStyle):
-    pass
-
-class UnknownQueryStyle(Exception):
-    pass
 
 
 #############
@@ -201,12 +226,15 @@ class UnknownQueryStyle(Exception):
 #############
 
 """
-Functions for presentation
+Presentation functions
 """
 
+# This function displays a message while the user waits for a function to execute
 def doWaitScreen(message, waitFunction, *args, **kwargs):
     return curses.wrapper(doWaitScreenNcurses, message, waitFunction, *args, **kwargs)
 
+# This function is where the Ncurses level of doWaitScreen starts.
+# It should never be called directly, but always through doWaitScreen!
 def doWaitScreenNcurses(stdscr, message, waitFunction, *args, **kwargs):
     curses.curs_set(0)
     curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
@@ -214,19 +242,25 @@ def doWaitScreenNcurses(stdscr, message, waitFunction, *args, **kwargs):
     printMenu(message, [], stdscr, 0, showItemNumber=False)
     return waitFunction(*args, **kwargs)
 
+# This Function gets a yes/no response to some query from the user
 def doYesNoQuery(query):
     return curses.wrapper(doYnQueryNcurses, query)
 
+# This function is where the Ncurses level of doYesNoQuery starts.
+# It should never be called directly, but always through doYesNoQuery!
 def doYnQueryNcurses(stdscr, query):
     choiceIndex = 0
     return doSelectionQueryNcurses(stdscr, query, ['yes','no'], showItemNumber=False)=='yes'
 
+# This function lets the user choose an object from a list
 def doSelectionQuery(query, options, queryStyle=ItemQuery, initialIndex=None,
         showItemNumber=True):
     return curses.wrapper(doSelectionQueryNcurses, query, options, 
             queryStyle=queryStyle, initialIndex=initialIndex,
             showItemNumber=showItemNumber)
 
+# This function is where the Ncurses level of doSelectionQuery starts.
+# It should never be called directly, but always through doSelectionQuery!
 def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery, 
         initialIndex=None, showItemNumber=True):
     curses.curs_set(0)
@@ -267,12 +301,17 @@ def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery,
             else:
                 raise UnknownQueryStyle
     
+# This function displays a piece of information to the user until they confirm having
+# seen it
 def doNotify(message):
     doSelectionQuery(message, ['ok'], showItemNumber=False)
 
+# This function gets a string of written input from the user
 def doGetUserInput(query, maxInputLength=40):
     return curses.wrapper(doGetUserInputNcurses, query, maxInputLength=maxInputLength)
 
+# This function is where the Ncurses level of doGetUserInput starts.
+# It should never be called directly, but always through doGetUserInput!
 def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
     curses.curs_set(0)
     curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
@@ -292,6 +331,10 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
         elif key in validChars and len(userInputChars) < maxInputLength:
             userInputChars.append(chr(key))
 
+# This function is used to visually represent a query and a number of menu items to the 
+# user, by using nCurses. It is used for all text printing in the program (even where
+# no application level menu is presented, i.e by simply not providing a query and no
+# menu objects)
 def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=True, jumpNumStr=''):
     stdscr.clear()
     height, width = stdscr.getmaxyx()
@@ -355,6 +398,7 @@ def escapeQuery(query):
     query = query.replace(' ', '+')
     return query
 
+# use this function to make HTTP requests without using Tor
 def unProxiedGetHttpContent(url, session=None, method = 'GET', postPayload = {}):
     if session is None:
         if method == 'GET':
@@ -367,6 +411,7 @@ def unProxiedGetHttpContent(url, session=None, method = 'GET', postPayload = {})
         elif method == 'POST':
             return session.post(url, postPayload)
 
+# use this function to get content (typically hypertext or xml) using HTTP from YouTube
 def getYouTubeHtml(url, useTor, circuitManager):
     session = req.Session()
     session.headers['Accept-Language']='en-US'
@@ -399,7 +444,8 @@ def getRssAddressFromChannelUrl(url, useTor=False):
 def getRssAddressFromChannelId(channelId):
     return f"https://www.youtube.com/feeds/videos.xml?channel_id={channelId}"
 
-# use this function to get query results from searching for a channel
+# use this function to get a list of query results from searching for a channel
+# results are of the type ChannelQueryObject
 def getChannelQueryResults(query, useTor=False, circuitManager=None):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
             '&sp=EgIQAg%253D%253D'
@@ -408,7 +454,8 @@ def getChannelQueryResults(query, useTor=False, circuitManager=None):
     parser.feed(htmlContent)
     return parser.resultList
 
-# use this function to get query results from searching for a video
+# use this function to get a list of query results from searching for a video
+# results are of the type VideoQueryObject
 def getVideoQueryResults(query, useTor=False, circuitManager=None):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
             '&sp=EgIQAQ%253D%253D'
@@ -424,6 +471,7 @@ def getRssEntriesFromChannelId(channelId, useTor=False, circuitManager=None):
     entries = feedparser.parse(rssContent)['entries']
     return entries
 
+# use this function to initialize the database (dict format so it's easy to save as json)
 def initiateYouTubeRssDatabase():
     database = {}
     database['feeds'] = {}
@@ -431,6 +479,7 @@ def initiateYouTubeRssDatabase():
     database['title to id'] = {}
     return database
 
+# use this function to add a subscription to the database
 def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False,
         useTor=False, circuitManager=None):
     database['feeds'][channelId] = []
@@ -440,6 +489,7 @@ def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False,
         refreshSubscriptionsByChannelId([channelId], database, useTor=useTor, 
                 circuitManager=circuitManager)
 
+# use this function to remove a subscription from the database by channel title
 def removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle):
     if channelTitle not in database['title to id']:
         return
@@ -447,6 +497,7 @@ def removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle):
     removeSubscriptionFromDatabaseByChannelId(database, channelId)
     return
 
+# use this function to remove a subscription from the database by channel ID
 def removeSubscriptionFromDatabaseByChannelId(database, channelId):
     if channelId not in database['id to title']:
         return
@@ -456,6 +507,8 @@ def removeSubscriptionFromDatabaseByChannelId(database, channelId):
     outputDatabaseToFile(database, DATABASE_PATH)
 
 
+# use this function to retrieve new RSS entries for a subscription and add them to
+# a database
 def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False, 
         circuitManager=None):
     localFeeds = database['feeds']
@@ -468,9 +521,11 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
             for entry in remoteFeed:
                 filteredEntry = getRelevantDictFromFeedParserDict(entry)
                 filteredEntryIsNew = True
-                for localEntry in localFeed:
+                for i, localEntry in enumerate(localFeed):
                     if compareFeedDicts(localEntry, filteredEntry):
                         filteredEntryIsNew = False
+                        # in case any relevant data about the entry is changed, update it
+                        localFeed[i] = filteredEntry
                         break
                 if filteredEntryIsNew:
                     localFeed.insert(0, filteredEntry)
@@ -479,6 +534,7 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
             return False
     return True
 
+# use this function to open a YouTube video url in mpv
 def openUrlInMpv(url, useTor=False, maxResolution=1080):
     try:
         command = []
@@ -498,9 +554,11 @@ def openUrlInMpv(url, useTor=False, maxResolution=1080):
         result = -1
     return result == 0
 
+# use this function to see if two RSS entries have the same ID
 def compareFeedDicts(lhs,rhs):
     return lhs['id'] == rhs['id']
 
+# use this function to get the data we care about from the entries found by the RSS parser
 def getRelevantDictFromFeedParserDict(feedparserDict):
     outputDict =    {
                         'id'        : feedparserDict['id'],
@@ -515,24 +573,30 @@ def getRelevantDictFromFeedParserDict(feedparserDict):
 Functions for managing database persistence between user sessions
 """
 
+# use this function to read database from json string
 def parseDatabaseContent(content):
     return json.loads(content)
 
+# use this function to read database from json file
 def parseDatabaseFile(filename):
     with open(filename, 'r') as filePointer:
         return json.load(filePointer)
 
+# use this function to return json representation of database as string
 def getDatabaseString(database):
     return json.dumps(database, indent=4)
 
+# use this function to write json representation of database to file
 def outputDatabaseToFile(database, filename):
     with open(filename, 'w') as filePointer:
         return json.dump(database, filePointer, indent=4)
 
 """
-Functions for controlling main flow of the application
+Application control flow
 """
 
+# this is the application level flow entered when the user has chosen to search for a
+# video
 def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
     query = doGetUserInput("Search for video: ")
     querying = True
@@ -561,6 +625,8 @@ def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
                 querying = False
             
 
+# this is the application level flow entered when the user has chosen to subscribe to a
+# new channel
 def doInteractiveChannelSubscribe(database, useTor=False, circuitManager=None):
     query = doGetUserInput("Enter channel to search for: ")
     querying = True
@@ -592,6 +658,8 @@ def doInteractiveChannelSubscribe(database, useTor=False, circuitManager=None):
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                 querying = False
 
+# this is the application level flow entered when the user has chosen a channel that it
+# wants to subscribe to
 def doChannelSubscribe(result, database, useTor, circuitManager):
     refreshing = True
     if result.channelId in database['feeds']:
@@ -612,6 +680,8 @@ def doChannelSubscribe(result, database, useTor, circuitManager):
     outputDatabaseToFile(database, DATABASE_PATH)
     return ReturnFromMenu
 
+# this is the application level flow entered when the user has chosen to unsubscribe to 
+# a channel
 def doInteractiveChannelUnsubscribe(database):
     if not database['title to id']:
         doNotify('You are not subscribed to any channels')
@@ -628,18 +698,14 @@ def doInteractiveChannelUnsubscribe(database):
     menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
     doMethodMenu("Which channel do you want to unsubscribe from?", menuOptions)
 
+# this is the application level flow entered when the user has chosen a channel that it
+# wants to unsubscribe from
 def doChannelUnsubscribe(database, channelTitle):
     removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
     return ReturnFromMenu
 
-def doShowSubscriptions(database):
-    if not database['title to id']:
-        doNotify('You are not subscribed to any channels')
-    else:
-        doNotify("You are subscribed to these channels:")
-        for title in database['title to id']:
-            doNotify(f"\ntitle: {title}\nid: {database['title to id'][title]}")
-
+# this is the application level flow entered when the user has chosen to browse
+# its current subscriptions
 def doInteractiveBrowseSubscriptions(database, useTor):
     channelMenuList = list(database['title to id'])
     if not channelMenuList:
@@ -658,6 +724,9 @@ def doInteractiveBrowseSubscriptions(database, useTor):
     menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
     doMethodMenu("Which channel do you want to watch a video from?", menuOptions)
 
+# this is the application level flow entered when the user has chosen a channel while
+# browsing its current subscriptions;
+# the user now gets to select a video from the channel to watch
 def doSelectVideoFromSubscription(database, channelTitle, useTor):
     channelId = database['title to id'][channelTitle]
     videos = database['feeds'][channelId]
@@ -673,12 +742,16 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor):
     menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
     doMethodMenu("Which video do you want to watch?", menuOptions)
 
+# this is the application level flow entered when the user has selected a video to watch
+# while browsing its current subscriptions
 def doPlayVideoFromSubscription(video, useTor):
     result = playVideo(video['link'], useTor)
     if not video['seen']:
         video['seen'] = result
         outputDatabaseToFile(database, DATABASE_PATH)
 
+# this is the application level flow entered when the user is watching any video from
+# YouTube
 def playVideo(videoUrl, useTor=False):
     resolutionMenuList = [1080, 720, 480, 240]
     maxResolution = doSelectionQuery("Which maximum resolution do you want to use?",
@@ -692,9 +765,8 @@ def playVideo(videoUrl, useTor=False):
             break
     return result
 
-def doShowDatabase(database):
-    doNotify(getDatabaseString(database))
-
+# this is the application level flow entered when the user has chosen to refresh its
+# subscriptions
 def doRefreshSubscriptions(database, useTor=False, circuitManager=None):
     channelIdList = list(database['id to title'])
     refreshing = True
@@ -708,6 +780,9 @@ def doRefreshSubscriptions(database, useTor=False, circuitManager=None):
                 refreshing = False
     outputDatabaseToFile(database, DATABASE_PATH)
 
+# this is a function for managing menu hierarchies; once called, a menu presents
+# application flows available to the user. If called from a flow selected in a previous
+# method menu, the menu becomes a new branch one step further from the root menu
 def doMethodMenu(query, menuOptions):
     index = 0
     try:
@@ -724,11 +799,15 @@ def doMethodMenu(query, menuOptions):
     except KeyboardInterrupt:
         return
 
+# this function is an application level flow which when selected from a method menu simply
+# returns to the preceding menu (one step closer to the root menu)
 def doReturnFromMenu():
     return ReturnFromMenu
 
 
-# main section
+################
+# main section #
+################
 
 if __name__ == '__main__':
     try:
