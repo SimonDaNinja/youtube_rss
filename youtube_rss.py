@@ -204,25 +204,6 @@ class UnknownQueryStyle(Exception):
 Functions for presentation
 """
 
-def doMethodMenu(query, menuOptions):
-    index = 0
-    try:
-        while True:
-            methodMenuDecision, index = doSelectionQuery(query, menuOptions, 
-                    initialIndex=index, queryStyle=CombinedQuery)
-            try:
-                result = methodMenuDecision.executeDecision()
-            except KeyboardInterrupt:
-                result = None
-                pass
-            if result is ReturnFromMenu:
-                return
-    except KeyboardInterrupt:
-        return
-
-def doReturnFromMenu():
-    return ReturnFromMenu
-
 def doWaitScreen(message, waitFunction, *args, **kwargs):
     return curses.wrapper(doWaitScreenNcurses, message, waitFunction, *args, **kwargs)
 
@@ -727,7 +708,27 @@ def doRefreshSubscriptions(database, useTor=False, circuitManager=None):
                 refreshing = False
     outputDatabaseToFile(database, DATABASE_PATH)
 
-# main section (demonstration of tools)
+def doMethodMenu(query, menuOptions):
+    index = 0
+    try:
+        while True:
+            methodMenuDecision, index = doSelectionQuery(query, menuOptions, 
+                    initialIndex=index, queryStyle=CombinedQuery)
+            try:
+                result = methodMenuDecision.executeDecision()
+            except KeyboardInterrupt:
+                result = None
+                pass
+            if result is ReturnFromMenu:
+                return
+    except KeyboardInterrupt:
+        return
+
+def doReturnFromMenu():
+    return ReturnFromMenu
+
+
+# main section
 
 if __name__ == '__main__':
     try:
