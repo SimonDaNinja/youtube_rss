@@ -161,10 +161,14 @@ class CircuitManager:
         return self.circuitAuths[self.i%self.nCircuits]
 
 class MainMenuDecision:
-    def __init__(self, function, *args, **kwargs):
+    def __init__(self, string, function, *args, **kwargs):
         self.function = function
         self.args = args
         self.kwargs = kwargs
+        self.string = string
+
+    def __str__(self):
+        return self.string
 
     def executeDecision(self):
         self.function(*self.args, **self.kwargs)
@@ -614,34 +618,35 @@ if __name__ == '__main__':
         else:
             circuitManager = None
 
-        menuOptions =   {
-                            "Search for video"          : MainMenuDecision( doInteractiveSearchForVideo,
-                                                                            database,
-                                                                            useTor=useTor,
-                                                                            circuitManager=circuitManager),
-                            "Refresh subscriptions"     : MainMenuDecision( doRefreshSubscriptions,
-                                                                            database,
-                                                                            useTor=useTor,
-                                                                            circuitManager=circuitManager),
-                            "Browse subscriptions"      : MainMenuDecision( doInteractiveBrowseSubscriptions,
-                                                                            database,
-                                                                            useTor = useTor),
-                            "Subscribe to new channel"  : MainMenuDecision( doInteractiveChannelSubscribe,
-                                                                            database,
-                                                                            useTor=useTor,
-                                                                            circuitManager=circuitManager),
-                            "Unsubscribe from channel"  : MainMenuDecision( doInteractiveChannelUnsubscribe,
-                                                                            database),
-                            "Quit"                      : None
-                        }
-
-        menuList = list(menuOptions)
+        menuOptions =   [
+                            MainMenuDecision(   "Search for video",
+                                                doInteractiveSearchForVideo,
+                                                database,
+                                                useTor=useTor,
+                                                circuitManager=circuitManager),
+                            MainMenuDecision(   "Refresh subscriptions",
+                                                doRefreshSubscriptions,
+                                                database,
+                                                useTor=useTor,
+                                                circuitManager=circuitManager),
+                            MainMenuDecision(   "Browse subscriptions",
+                                                doInteractiveBrowseSubscriptions,
+                                                database,
+                                                useTor = useTor),
+                            MainMenuDecision(   "Subscribe to new channel",
+                                                doInteractiveChannelSubscribe,
+                                                database,
+                                                useTor=useTor,
+                                                circuitManager=circuitManager),
+                            MainMenuDecision(   "Unsubscribe from channel",
+                                                doInteractiveChannelUnsubscribe,
+                                                database),
+                            MainMenuDecision(   "Quit",
+                                                exit)
+                        ]
 
         while True:
-            mainMenuDecisionKey = doSelectionQuery("What do you want to do?", menuList)
-            mainMenuDecision = menuOptions[mainMenuDecisionKey]
-            if mainMenuDecision is None:
-                exit()
+            mainMenuDecision = doSelectionQuery("What do you want to do?", menuOptions)
             try:
                 mainMenuDecision.executeDecision()
             except KeyboardInterrupt:
