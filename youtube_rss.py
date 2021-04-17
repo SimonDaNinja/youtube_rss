@@ -244,7 +244,8 @@ def doSelectionQuery(query, options, queryStyle=ItemQuery, initialIndex=None):
     return curses.wrapper(doSelectionQueryNcurses, query, options, 
             queryStyle=queryStyle, initialIndex=initialIndex)
 
-def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery, initialIndex=None):
+def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery, 
+        initialIndex=None):
     curses.curs_set(0)
     curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
@@ -284,7 +285,8 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
             'qwertyuiopasdfghjklzxcvbnmåäöQWERTYUIOPASDFGHJKLZXCVBNMÅÄÖ1234567890 _+']
     userInputChars = []
     while True:
-        printMenu(query, [''.join(userInputChars)], stdscr, 0,xAlignment=maxInputLength//2)
+        printMenu(query, [''.join(userInputChars)], stdscr, 0,
+                xAlignment=maxInputLength//2)
         key = stdscr.getch()
         if key == curses.KEY_BACKSPACE:
             if userInputChars: userInputChars.pop()
@@ -430,7 +432,8 @@ def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False,
     database['id to title'][channelId] = channelTitle
     database['title to id'][channelTitle] = channelId
     if refresh:
-        refreshSubscriptionsByChannelId([channelId], database, useTor=useTor, circuitManager=circuitManager)
+        refreshSubscriptionsByChannelId([channelId], database, useTor=useTor, 
+                circuitManager=circuitManager)
 
 def removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle):
     if channelTitle not in database['title to id']:
@@ -448,11 +451,13 @@ def removeSubscriptionFromDatabaseByChannelId(database, channelId):
     outputDatabaseToFile(database, DATABASE_PATH)
 
 
-def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False, circuitManager=None):
+def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False, 
+        circuitManager=None):
     localFeeds = database['feeds']
     for channelId in channelIdList:
         localFeed = localFeeds[channelId]
-        remoteFeed = getRssEntriesFromChannelId(channelId, useTor=useTor, circuitManager=circuitManager)
+        remoteFeed = getRssEntriesFromChannelId(channelId, useTor=useTor, 
+                circuitManager=circuitManager)
         if remoteFeed is not None:
             remoteFeed.reverse()
             for entry in remoteFeed:
@@ -557,7 +562,8 @@ def doInteractiveChannelSubscribe(database, useTor=False, circuitManager=None):
     while querying:
         try:
             resultList = doWaitScreen("Getting channel results...", 
-                    getChannelQueryResults, query, useTor=useTor, circuitManager=circuitManager)
+                    getChannelQueryResults, query, useTor=useTor, 
+                    circuitManager=circuitManager)
             if resultList is not None and resultList:
                 menuOptions = [
                     MethodMenuDecision(
