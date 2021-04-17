@@ -316,10 +316,10 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=
     height, width = stdscr.getmaxyx()
     screenCenterX = width//2
     screenCenterY = height//2
-    nRowsToPrint = (len(menu)+2)//2
+    nRowsToPrint = (len(menu)+2)
 
     if xAlignment is not None:
-        itemX = screenCenterX - xAlignment
+        itemX = max(min(screenCenterX - xAlignment, width-2),0)
     elif menu:
         menuWidth = max([len(f"{i+1}: {item}" if showItemNumber else str(item)) for i, 
             item in enumerate(menu)])
@@ -328,25 +328,26 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=
         itemX = None
     
     if itemX != 0 and itemX is not None:
-        itemX = max(min(abs(itemX), width)*(itemX//abs(itemX)),0)
-
-    if nRowsToPrint >= height-1:
-        ySelected = screenCenterY - nRowsToPrint + choiceIndex + 2
-        offset = (ySelected - screenCenterY)
-    else:
-        offset = 0
+        itemX = max(min(itemX, width-2),0)
 
     jumpNumStr = jumpNumStr[:max(min(len(jumpNumStr), width-1),0)]
     if jumpNumStr:
         stdscr.addstr(0,0,jumpNumStr)
+
+    offset = 0
+    titleY = screenCenterY-nRowsToPrint//2
+    if nRowsToPrint >= height-2:
+        yTitleTheoretical = screenCenterY - nRowsToPrint//2
+        ySelectedTheoretical = (yTitleTheoretical + 2 + choiceIndex)
+        offset = max(ySelectedTheoretical-screenCenterY, yTitleTheoretical)
+    titleY -= offset
 
     titleX = max(screenCenterX-(len(query)//2),0)
     if titleX != 0:
         titleX = max(min(abs(titleX), width)*(titleX//abs(titleX)),0)
     if len(query) >= width-1:
         query = query[0:width-1]
-    titleY = screenCenterY-nRowsToPrint - offset
-    if titleY > 0 and titleY<=height-1:
+    if titleY >= 0 and titleY<height-1:
         stdscr.addstr(titleY, titleX, query)
     for i, item in enumerate(menu):
         itemString = f"{i+1}: {item}" if showItemNumber else str(item)
@@ -354,8 +355,8 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=
             itemString = itemString[:max((width-itemX-2),0)]
         attr = curses.color_pair(HIGHLIGHTED if i == choiceIndex else NOT_HIGHLIGHTED)
         stdscr.attron(attr)
-        itemY = screenCenterY - nRowsToPrint + i + 2 - offset
-        if itemY > 0 and itemY <= height-1 and itemString:
+        itemY = screenCenterY - nRowsToPrint//2 + i + 2 - offset
+        if itemY >= 0 and itemY < height-1 and itemString:
             stdscr.addstr(itemY, itemX, itemString)
         stdscr.attroff(attr)
     stdscr.refresh()
