@@ -160,7 +160,7 @@ class CircuitManager:
         self.i += 1
         return self.circuitAuths[self.i%self.nCircuits]
 
-class MainMenuDecision:
+class MethodMenuDecision:
     def __init__(self, string, function, *args, **kwargs):
         self.function = function
         self.args = args
@@ -171,7 +171,10 @@ class MainMenuDecision:
         return self.string
 
     def executeDecision(self):
-        self.function(*self.args, **self.kwargs)
+        return self.function(*self.args, **self.kwargs)
+
+class ReturnFromMenu:
+    pass
 
 
 #############
@@ -181,6 +184,23 @@ class MainMenuDecision:
 """
 Functions for presentation
 """
+
+def doMethodMenu(query, menuOptions):
+    try:
+        while True:
+            methodMenuDecision = doSelectionQuery(query, menuOptions)
+            try:
+                result = methodMenuDecision.executeDecision()
+            except KeyboardInterrupt:
+                result = None
+                pass
+            if result is ReturnFromMenu:
+                return
+    except KeyboardInterrupt:
+        return
+
+def doReturnFromMenu():
+    return ReturnFromMenu
 
 def doWaitScreen(message, waitFunction, *args, **kwargs):
     return curses.wrapper(doWaitScreenNcurses, message, waitFunction, *args, **kwargs)
@@ -619,37 +639,32 @@ if __name__ == '__main__':
             circuitManager = None
 
         menuOptions =   [
-                            MainMenuDecision(   "Search for video",
+                            MethodMenuDecision(   "Search for video",
                                                 doInteractiveSearchForVideo,
                                                 database,
                                                 useTor=useTor,
                                                 circuitManager=circuitManager),
-                            MainMenuDecision(   "Refresh subscriptions",
+                            MethodMenuDecision(   "Refresh subscriptions",
                                                 doRefreshSubscriptions,
                                                 database,
                                                 useTor=useTor,
                                                 circuitManager=circuitManager),
-                            MainMenuDecision(   "Browse subscriptions",
+                            MethodMenuDecision(   "Browse subscriptions",
                                                 doInteractiveBrowseSubscriptions,
                                                 database,
                                                 useTor = useTor),
-                            MainMenuDecision(   "Subscribe to new channel",
+                            MethodMenuDecision(   "Subscribe to new channel",
                                                 doInteractiveChannelSubscribe,
                                                 database,
                                                 useTor=useTor,
                                                 circuitManager=circuitManager),
-                            MainMenuDecision(   "Unsubscribe from channel",
+                            MethodMenuDecision(   "Unsubscribe from channel",
                                                 doInteractiveChannelUnsubscribe,
                                                 database),
-                            MainMenuDecision(   "Quit",
+                            MethodMenuDecision(   "Quit",
                                                 exit)
                         ]
 
-        while True:
-            mainMenuDecision = doSelectionQuery("What do you want to do?", menuOptions)
-            try:
-                mainMenuDecision.executeDecision()
-            except KeyboardInterrupt:
-                pass
+        doMethodMenu("What do you want to do?", menuOptions)
     except KeyboardInterrupt:
         exit()
