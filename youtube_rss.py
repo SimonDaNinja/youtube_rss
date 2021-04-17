@@ -707,10 +707,6 @@ def doChannelUnsubscribe(database, channelTitle):
 # this is the application level flow entered when the user has chosen to browse
 # its current subscriptions
 def doInteractiveBrowseSubscriptions(database, useTor):
-    channelMenuList = list(database['title to id'])
-    if not channelMenuList:
-        doNotify('You are not subscribed to any channels')
-        return
     menuOptions = [
         MethodMenuDecision(
             channelTitle,
@@ -721,6 +717,11 @@ def doInteractiveBrowseSubscriptions(database, useTor):
         )
         for channelTitle in database['title to id']
     ]
+
+    if not menuOptions:
+        doNotify('You are not subscribed to any channels')
+        return
+
     menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
     doMethodMenu("Which channel do you want to watch a video from?", menuOptions)
 
@@ -780,15 +781,97 @@ def doRefreshSubscriptions(database, useTor=False, circuitManager=None):
                 refreshing = False
     outputDatabaseToFile(database, DATABASE_PATH)
 
+def doStartupMenu(database):
+    menuOptions = [
+        MethodMenuDecision(
+            "Yes",
+            doStartupWithTor,
+            database
+        ),
+        MethodMenuDecision(
+            "No",
+            doMainMenu,
+            database
+        )
+    ]
+    doMethodMenu("Do you want to use tor?", menuOptions, showItemNumber=False)
+
+def doStartupWithTor(database):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        result = sock.connect_ex(('127.0.0.1',9050))
+    if result != 0:
+        menuOptions = [
+            MethodMenuDecision(
+                "Yes",
+                doMainMenu,
+                database
+            ),
+            MethodMenuDecision(
+                "No",
+                doNotifyAndReturnFromMenu,
+                "Can't find Tor daemon. Exiting program."
+            )
+        ]
+        doMethodMenu("Tor daemon not found on port 9050! " + \
+                "Continue without tor?", menuOptions, showItemNumber=False)
+    else:
+        doMainMenu(database, useTor=True, circuitManager=CircuitManager())
+    return ReturnFromMenu
+
+
+
+def doMainMenu(database, useTor=False, circuitManager=None):
+    menuOptions =   [
+        MethodMenuDecision( 
+            "Search for video",
+            doInteractiveSearchForVideo,
+            database,
+            useTor=useTor,
+            circuitManager=circuitManager
+        ),
+        MethodMenuDecision( 
+            "Refresh subscriptions",
+            doRefreshSubscriptions,
+            database,
+            useTor=useTor,
+            circuitManager=circuitManager
+        ),
+        MethodMenuDecision( 
+            "Browse subscriptions",
+            doInteractiveBrowseSubscriptions,
+            database,
+            useTor = useTor
+        ),
+        MethodMenuDecision( 
+            "Subscribe to new channel",
+            doInteractiveChannelSubscribe,
+            database,
+            useTor=useTor,
+            circuitManager=circuitManager
+        ),
+        MethodMenuDecision( 
+            "Unsubscribe from channel",
+            doInteractiveChannelUnsubscribe,
+            database
+        ),
+        MethodMenuDecision(
+            "Quit",
+            doReturnFromMenu
+        )
+    ]
+    doMethodMenu("What do you want to do?", menuOptions)
+    return ReturnFromMenu
+
 # this is a function for managing menu hierarchies; once called, a menu presents
 # application flows available to the user. If called from a flow selected in a previous
 # method menu, the menu becomes a new branch one step further from the root menu
-def doMethodMenu(query, menuOptions):
+def doMethodMenu(query, menuOptions, showItemNumber = True):
     index = 0
     try:
         while True:
             methodMenuDecision, index = doSelectionQuery(query, menuOptions, 
-                    initialIndex=index, queryStyle=CombinedQuery)
+                    initialIndex=index, queryStyle=CombinedQuery,
+                    showItemNumber=showItemNumber)
             try:
                 result = methodMenuDecision.executeDecision()
             except KeyboardInterrupt:
@@ -798,6 +881,10 @@ def doMethodMenu(query, menuOptions):
                 return
     except KeyboardInterrupt:
         return
+
+def doNotifyAndReturnFromMenu(message):
+    doNotify(message)
+    return ReturnFromMenu
 
 # this function is an application level flow which when selected from a method menu simply
 # returns to the preceding menu (one step closer to the root menu)
@@ -810,68 +897,11 @@ def doReturnFromMenu():
 ################
 
 if __name__ == '__main__':
-    try:
-        if not os.path.isdir(YOUTUBE_RSS_DIR):
-            os.mkdir(YOUTUBE_RSS_DIR)
-        if os.path.isfile(DATABASE_PATH):
-            database = parseDatabaseFile(DATABASE_PATH)
-        else:
-            database = initiateYouTubeRssDatabase()
+    if not os.path.isdir(YOUTUBE_RSS_DIR):
+        os.mkdir(YOUTUBE_RSS_DIR)
+    if os.path.isfile(DATABASE_PATH):
+        database = parseDatabaseFile(DATABASE_PATH)
+    else:
+        database = initiateYouTubeRssDatabase()
 
-        useTor = doYesNoQuery("Do you want to use tor?")
-        if useTor:
-            circuitManager = CircuitManager()
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                result = sock.connect_ex(('127.0.0.1',9050))
-            if result != 0:
-                if doYesNoQuery("Tor daemon not found on port 9050! " + \
-                        "Continue without tor?"):
-                    useTor=False
-                else:
-                    doNotify("Can't find Tor daemon. Exiting program.")
-                    exit()
-        else:
-            circuitManager = None
-
-        menuOptions =   [
-            MethodMenuDecision( 
-                "Search for video",
-                doInteractiveSearchForVideo,
-                database,
-                useTor=useTor,
-                circuitManager=circuitManager
-            ),
-            MethodMenuDecision( 
-                "Refresh subscriptions",
-                doRefreshSubscriptions,
-                database,
-                useTor=useTor,
-                circuitManager=circuitManager
-            ),
-            MethodMenuDecision( 
-                "Browse subscriptions",
-                doInteractiveBrowseSubscriptions,
-                database,
-                useTor = useTor
-            ),
-            MethodMenuDecision( 
-                "Subscribe to new channel",
-                doInteractiveChannelSubscribe,
-                database,
-                useTor=useTor,
-                circuitManager=circuitManager
-            ),
-            MethodMenuDecision( 
-                "Unsubscribe from channel",
-                doInteractiveChannelUnsubscribe,
-                database
-            ),
-            MethodMenuDecision(
-                "Quit",
-                doReturnFromMenu
-            )
-        ]
-
-        doMethodMenu("What do you want to do?", menuOptions)
-    except KeyboardInterrupt:
-        exit()
+    doStartupMenu(database)
