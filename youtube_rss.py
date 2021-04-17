@@ -124,13 +124,19 @@ class VideoQueryParser(HTMLParser):
 Indicator classes
 """
 
+# Parent to all indicator classes
+class IndicatorClass:
+    def __init__(self):
+        raise InstantiateIndicatorClassError
+
+
 # returned from menu method to indicate whether application flow should step
 # closer to the root menu
-class ReturnFromMenu:
+class ReturnFromMenu(IndicatorClass):
     pass
 
 # indicates whether selection query should return by index, item or both
-class QueryStyle:
+class QueryStyle(IndicatorClass):
     pass
 
 # indicates that selection query should return by index
@@ -152,6 +158,11 @@ Exception classes
 # indicates that the provided query style is not supported
 class UnknownQueryStyle(Exception):
     pass
+
+class InstantiateIndicatorClassError(Exception):
+    def __init__(self, message="Can't instantiate an indicator class!"):
+        self.message = message
+        Exception.__init__(self, self.message)
 
 """
 Other classes
