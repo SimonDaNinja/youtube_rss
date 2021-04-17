@@ -461,10 +461,10 @@ def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False,
 
 def removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle):
     if channelTitle not in database['title to id']:
-        return ReturnFromMenu
+        return
     channelId = database['title to id'][channelTitle]
     removeSubscriptionFromDatabaseByChannelId(database, channelId)
-    return ReturnFromMenu
+    return
 
 def removeSubscriptionFromDatabaseByChannelId(database, channelId):
     if channelId not in database['id to title']:
@@ -638,7 +638,7 @@ def doInteractiveChannelUnsubscribe(database):
     menuOptions = [
         MethodMenuDecision(
             channelTitle,
-            removeSubscriptionFromDatabaseByChannelTitle,
+            doChannelUnsubscribe,
             database,
             channelTitle
         )
@@ -646,6 +646,10 @@ def doInteractiveChannelUnsubscribe(database):
     ]
     menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
     doMethodMenu("Which channel do you want to unsubscribe from?", menuOptions)
+
+def doChannelUnsubscribe(database, channelTitle):
+    removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
+    return ReturnFromMenu
 
 def doShowSubscriptions(database):
     if not database['title to id']:
