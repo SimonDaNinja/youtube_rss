@@ -124,6 +124,10 @@ class VideoQueryObject:
     def __init__(self, videoId = None, title = None):
         self.videoId   = videoId
         self.title     = title
+        if videoId is not None:
+            self.url = f"http://youtube.com/watch?v={videoId}"
+        else:
+            self.url = None
 
     def __str__(self):
         return f"{self.title}"
@@ -394,9 +398,6 @@ def initiateYouTubeRssDatabase():
 
 def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False,
         useTor=False, circuitManager=None):
-    if channelId in database['feeds']:
-        doNotify("Already subscribed to this channel!")
-        return
     database['feeds'][channelId] = []
     database['id to title'][channelId] = channelTitle
     database['title to id'][channelTitle] = channelId
@@ -405,9 +406,10 @@ def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False,
 
 def removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle):
     if channelTitle not in database['title to id']:
-        return
+        return ReturnFromMenu
     channelId = database['title to id'][channelTitle]
     removeSubscriptionFromDatabaseByChannelId(database, channelId)
+    return ReturnFromMenu
 
 def removeSubscriptionFromDatabaseByChannelId(database, channelId):
     if channelId not in database['id to title']:
@@ -501,10 +503,17 @@ def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
             resultList = doWaitScreen("Getting video results...", getVideoQueryResults,
                     query, useTor=useTor, circuitManager=circuitManager)
             if resultList:
-                result = doSelectionQuery(f"search results for {query}:", resultList)
-                url = f"http://youtube.com/watch?v={result.videoId}"
-                refreshing = True
-                playVideo(url, useTor=useTor)
+                menuOptions = [
+                    MethodMenuDecision(
+                        str(result),
+                        playVideo,
+                        result.url,
+                        useTor=useTor
+                    )
+                    for result in resultList
+                ]
+                menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
+                doMethodMenu(f"Search results for '{query}':",menuOptions)
                 querying = False
             else:
                 doNotify("no results found")
@@ -522,22 +531,20 @@ def doInteractiveChannelSubscribe(database, useTor=False, circuitManager=None):
             resultList = doWaitScreen("Getting channel results...", 
                     getChannelQueryResults, query, useTor=useTor, circuitManager=circuitManager)
             if resultList is not None:
-                result = doSelectionQuery(f"search results for {query}, choose which " + \
-                        "channel to supscribe to", resultList)
-                refreshing = True
-                while refreshing:
-                    try:
-                        doWaitScreen(f"getting data from feed for {result.title}...",
-                                addSubscriptionToDatabase,database, result.channelId,
-                                result.title, refresh=True, useTor=useTor,
-                                circuitManager=circuitManager)
-                        refreshing = False
-                    except req.exceptions.ConnectionError:
-                        if not doYesNoQuery("Something went wrong with the " + \
-                                "connection. Try again?"):
-                            querying = False
-                            refreshing = False
-                outputDatabaseToFile(database, DATABASE_PATH)
+                menuOptions = [
+                    MethodMenuDecision(
+                        str(result),
+                        doChannelSubscribe,
+                        result,
+                        database,
+                        useTor,
+                        circuitManager
+                    )
+                    for result in resultList
+                ]
+                menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
+                doMethodMenu(f"search results for {query}, choose which " + \
+                        "channel to supscribe to", menuOptions)
                 querying = False
             else:
                 if not doYesNoQuery("No results found. Try again?"):
@@ -546,14 +553,41 @@ def doInteractiveChannelSubscribe(database, useTor=False, circuitManager=None):
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                 querying = False
 
+def doChannelSubscribe(result, database, useTor, circuitManager):
+    refreshing = True
+    if result.channelId in database['feeds']:
+        doNotify("Already subscribed to this channel!")
+        return
+    while refreshing:
+        try:
+            doWaitScreen(f"getting data from feed for {result.title}...",
+                    addSubscriptionToDatabase,database, result.channelId,
+                    result.title, refresh=True, useTor=useTor,
+                    circuitManager=circuitManager)
+            refreshing = False
+        except req.exceptions.ConnectionError:
+            if not doYesNoQuery("Something went wrong with the " + \
+                    "connection. Try again?"):
+                querying = False
+                refreshing = False
+    outputDatabaseToFile(database, DATABASE_PATH)
+    return ReturnFromMenu
+
 def doInteractiveChannelUnsubscribe(database):
-    channelTitleList = [key for key in database['title to id']]
-    if not channelTitleList:
+    if not database['title to id']:
         doNotify('You are not subscribed to any channels')
         return
-    channelTitle = doSelectionQuery("Which channel do you want to unsubscribe from?",
-            channelTitleList)
-    removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
+    menuOptions = [
+        MethodMenuDecision(
+            channelTitle,
+            removeSubscriptionFromDatabaseByChannelTitle,
+            database,
+            channelTitle
+        )
+        for channelTitle in database['title to id']
+    ]
+    menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
+    doMethodMenu("Which channel do you want to unsubscribe from?", menuOptions)
 
 def doShowSubscriptions(database):
     if not database['title to id']:
@@ -568,20 +602,39 @@ def doInteractiveBrowseSubscriptions(database, useTor):
     if not channelMenuList:
         doNotify('You are not subscribed to any channels')
         return
-    channelTitle = doSelectionQuery("Which channel do you want to watch a video from?", 
-            channelMenuList)
+    menuOptions = [
+        MethodMenuDecision(
+            channelTitle,
+            doSelectVideoFromSubscription,
+            database,
+            channelTitle,
+            useTor
+        )
+        for channelTitle in database['title to id']
+    ]
+    menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
+    doMethodMenu("Which channel do you want to watch a video from?", menuOptions)
+
+def doSelectVideoFromSubscription(database, channelTitle, useTor):
     channelId = database['title to id'][channelTitle]
     videos = database['feeds'][channelId]
-    videosMenuList = [video['title'] + (' (unseen!)' if not video['seen'] else '') for \
-            video in videos]
-    video = videos[doSelectionQuery("Which video do you want to watch?", videosMenuList, \
-        indexChoice=True)]
-    videoUrl = video['link']
-    result = playVideo(videoUrl, useTor)
+    menuOptions = [
+        MethodMenuDecision(
+            video['title'] + (' (unseen!)' if not video['seen'] else ''),
+            doPlayVideoFromSubscription,
+            video,
+            useTor
+        )
+        for video in videos
+    ]
+    menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
+    doMethodMenu("Which video do you want to watch?", menuOptions)
+
+def doPlayVideoFromSubscription(video, useTor):
+    result = playVideo(video['link'], useTor)
     if not video['seen']:
         video['seen'] = result
         outputDatabaseToFile(database, DATABASE_PATH)
-
 
 def playVideo(videoUrl, useTor=False):
     resolutionMenuList = [1080, 720, 480, 240]
@@ -639,31 +692,43 @@ if __name__ == '__main__':
             circuitManager = None
 
         menuOptions =   [
-                            MethodMenuDecision(   "Search for video",
-                                                doInteractiveSearchForVideo,
-                                                database,
-                                                useTor=useTor,
-                                                circuitManager=circuitManager),
-                            MethodMenuDecision(   "Refresh subscriptions",
-                                                doRefreshSubscriptions,
-                                                database,
-                                                useTor=useTor,
-                                                circuitManager=circuitManager),
-                            MethodMenuDecision(   "Browse subscriptions",
-                                                doInteractiveBrowseSubscriptions,
-                                                database,
-                                                useTor = useTor),
-                            MethodMenuDecision(   "Subscribe to new channel",
-                                                doInteractiveChannelSubscribe,
-                                                database,
-                                                useTor=useTor,
-                                                circuitManager=circuitManager),
-                            MethodMenuDecision(   "Unsubscribe from channel",
-                                                doInteractiveChannelUnsubscribe,
-                                                database),
-                            MethodMenuDecision(   "Quit",
-                                                exit)
-                        ]
+            MethodMenuDecision( 
+                "Search for video",
+                doInteractiveSearchForVideo,
+                database,
+                useTor=useTor,
+                circuitManager=circuitManager
+            ),
+            MethodMenuDecision( 
+                "Refresh subscriptions",
+                doRefreshSubscriptions,
+                database,
+                useTor=useTor,
+                circuitManager=circuitManager
+            ),
+            MethodMenuDecision( 
+                "Browse subscriptions",
+                doInteractiveBrowseSubscriptions,
+                database,
+                useTor = useTor
+            ),
+            MethodMenuDecision( 
+                "Subscribe to new channel",
+                doInteractiveChannelSubscribe,
+                database,
+                useTor=useTor,
+                circuitManager=circuitManager
+            ),
+            MethodMenuDecision( 
+                "Unsubscribe from channel",
+                doInteractiveChannelUnsubscribe,
+                database
+            ),
+            MethodMenuDecision(
+                "Quit",
+                doReturnFromMenu
+            )
+        ]
 
         doMethodMenu("What do you want to do?", menuOptions)
     except KeyboardInterrupt:
