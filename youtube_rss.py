@@ -226,11 +226,17 @@ class MethodMenuDecision:
         self.description = description
 
     def __str__(self):
-        return self.description
+        return str(self.description)
 
     def executeDecision(self):
         return self.function(*self.args, **self.kwargs)
 
+class FeedVideoContainer:
+    def __init__(self, video):
+        self.video = video
+
+    def __str__(self):
+        return self.video['title'] + (' (unseen!)' if not self.video['seen'] else '')
 
 
 #############
@@ -537,6 +543,7 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
                     if compareFeedDicts(localEntry, filteredEntry):
                         filteredEntryIsNew = False
                         # in case any relevant data about the entry is changed, update it
+                        filteredEntry['seen'] = localEntry['seen']
                         localFeed[i] = filteredEntry
                         break
                 if filteredEntryIsNew:
@@ -745,7 +752,7 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor):
     videos = database['feeds'][channelId]
     menuOptions = [
         MethodMenuDecision(
-            video['title'] + (' (unseen!)' if not video['seen'] else ''),
+            FeedVideoContainer(video),
             doPlayVideoFromSubscription,
             video,
             useTor
