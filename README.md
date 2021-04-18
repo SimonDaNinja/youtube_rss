@@ -44,3 +44,34 @@ I am not a professional, and may have missed something important. However, the s
 should be relatively small, and I've taken care to get rid of DNS-leaks, etc. as well as I can.
 If you are more knowledgable than I, then I would appreciate input on how to make YouTube\_RSS
 more privacy preserving and secure.
+
+# Manual
+Most of the way the application works is self-explanatory; I won't tell you that to search for a
+video, you enter the "search for video" option (although I guess I just did), but rather focus on
+the things not immediately obvious when opening the program.
+
+## Key binds
+When in a menu, the user can press `KEY_UP` or `k` to move to the previous menu item.
+
+When in a menu, the user can press `KEY_DOWN` or `j` to move to the next menu item.
+
+When in a menu, the user can press `g` (lower case) to go to the first menu item.
+
+When in a menu, the user can press `G` (upper case) to go to the last menu item.
+
+When in a menu, the user can type a number and then press either `Enter` or `l` or `KEY_RIGHT`
+to jump to the item indicated by the number typed by the user.
+
+When in a menu, the user can press `ENTER`, `l` or `KEY_RIGHT` to select an item from a menu.
+
+When in a menu, the user can press `q`, `<Ctrl>-C`, `h` or `KEY_LEFT` to go back to the previous menu.
+
+When browsing subscriptions, in the menu where channels are displayed as menu items, the user can press
+`a` to toggle all entries of the currently highlighted channel as seen or unseen
+
+When browsing subscriptions, in the menu where videos from a particular channel are displayed as menu
+items, the user can press `a` to toggle the highlighted entry as seen or unseen
+
+## Files managed by the program
+The database file that is used to keep track of subscriptions is saved under `~/.youtube_rss/database`,
+and is formated as json.
