@@ -417,7 +417,8 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
                 xAlignment=maxInputLength//2, showItemNumber=False)
         key = stdscr.getch()
         if key == curses.KEY_BACKSPACE:
-            if userInputChars: userInputChars.pop(curserPosition-1)
+            deleteIndex = curserPosition-1
+            if deleteIndex >= 0 : userInputChars.pop(curserPosition-1)
             curserPosition = max(0, curserPosition-1)
         elif key in [curses.KEY_ENTER, 10, 13]:
             return ''.join(userInputChars)
