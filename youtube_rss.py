@@ -662,7 +662,7 @@ def doInteractiveChannelSubscribe(database, useTor=False, circuitManager=None):
             resultList = doWaitScreen("Getting channel results...", 
                     getChannelQueryResults, query, useTor=useTor, 
                     circuitManager=circuitManager)
-            if resultList is not None and resultList:
+            if resultList:
                 menuOptions = [
                     MethodMenuDecision(
                         str(result),
