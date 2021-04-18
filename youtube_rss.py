@@ -48,6 +48,8 @@ DATABASE_PATH  = '/'.join([YOUTUBE_RSS_DIR, 'database'])
 HIGHLIGHTED = 1
 NOT_HIGHLIGHTED = 2
 
+ANY_INDEX = -1
+
 ###########
 # classes #
 ###########
@@ -247,6 +249,39 @@ class FeedDescriber:
         return ''.join([self.channelTitle, ': (', str(sum([1 for video in self.feed
             if not video['seen']])),'/',str(len(self.feed)), ')'])
 
+class AdHocKey:
+    def __init__(self, key, item, activationIndex = ANY_INDEX):
+        self.key = key
+        self.item = item
+        self.activationIndex = activationIndex
+
+    def isValidIndex(self, index):
+        if self.activationIndex == ANY_INDEX:
+            return True
+        else:
+            return index == self.activationIndex
+
+    def __eq__(self,other):
+        if isinstance(other, int):
+            return other == self.key
+        if isinstance(other, chr):
+            return other == chr(self.key)
+        if isinstance(other, AdHocKey):
+            return other.key == self.key and other.item == self.item and \
+                    other.activationIndex == self.activationIndex
+        else:
+            raise TypeError
+
+class MarkAllAsReadKey(AdHocKey):
+    def __init__(self, channelId, activationIndex, database, key=ord('a')):
+        item =  MethodMenuDecision(
+                    f"mark all by {channelId} as read",
+                    doMarkChannelAsRead,
+                    database,
+                    channelId
+                )
+        AdHocKey.__init__(self, key, item, activationIndex)
+
 
 #############
 # functions #
@@ -280,15 +315,15 @@ def doYnQueryNcurses(stdscr, query):
 
 # This function lets the user choose an object from a list
 def doSelectionQuery(query, options, queryStyle=ItemQuery, initialIndex=None,
-        showItemNumber=True):
+        showItemNumber=True, adHocKeys=[]):
     return curses.wrapper(doSelectionQueryNcurses, query, options, 
             queryStyle=queryStyle, initialIndex=initialIndex,
-            showItemNumber=showItemNumber)
+            showItemNumber=showItemNumber, adHocKeys=adHocKeys)
 
 # This function is where the Ncurses level of doSelectionQuery starts.
 # It should never be called directly, but always through doSelectionQuery!
 def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery, 
-        initialIndex=None, showItemNumber=True):
+        initialIndex=None, showItemNumber=True, adHocKeys=[]):
     curses.curs_set(0)
     curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
@@ -301,7 +336,17 @@ def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery,
         printMenu(query, options, stdscr, choiceIndex, showItemNumber=showItemNumber,
                 jumpNumStr = ''.join(jumpNumList))
         key = stdscr.getch()
-        if key in [curses.KEY_UP, ord('k')]:
+        # Ad hoc keys should always take first precedence
+        if key in adHocKeys:
+            index = adHocKeys.index(key)
+            if adHocKeys[index].isValidIndex(choiceIndex):
+                if queryStyle is ItemQuery:
+                    return adHocKeys[index].item
+                elif queryStyle is IndexQuery:
+                    return choiceIndex
+                elif queryStyle is CombinedQuery:
+                    return adHocKeys[index].item, choiceIndex
+        elif key in [curses.KEY_UP, ord('k')]:
             jumpNumList = []
             choiceIndex = (choiceIndex-1)%len(options)
         elif key in [curses.KEY_DOWN, ord('j')]:
@@ -334,6 +379,7 @@ def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery,
                 return options[choiceIndex], choiceIndex
             else:
                 raise UnknownQueryStyle
+
     
 # This function displays a piece of information to the user until they confirm having
 # seen it
@@ -630,6 +676,15 @@ def outputDatabaseToFile(database, filename):
 Application control flow
 """
 
+def doMarkChannelAsRead(database, channelId):
+    allAreAlreadyMarkedAsRead = True
+    for video in database['feeds'][channelId]:
+        if not video['seen']:
+            allAreAlreadyMarkedAsRead = False
+            break
+    for video in database['feeds'][channelId]:
+        video['seen'] = not allAreAlreadyMarkedAsRead
+
 # this is the application level flow entered when the user has chosen to search for a
 # video
 def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
@@ -751,12 +806,21 @@ def doInteractiveBrowseSubscriptions(database, useTor):
         ) for channelTitle in database['title to id']
     ]
 
+    adHocKeys = [
+        MarkAllAsReadKey(
+            channelId,
+            i+1,
+            database
+        ) for i, channelId in enumerate(database['feeds'])
+    ]
+
     if not menuOptions:
         doNotify('You are not subscribed to any channels')
         return
 
     menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
-    doMethodMenu("Which channel do you want to watch a video from?", menuOptions)
+    doMethodMenu("Which channel do you want to watch a video from?", menuOptions,
+            adHocKeys = adHocKeys)
 
 # this is the application level flow entered when the user has chosen a channel while
 # browsing its current subscriptions;
@@ -890,13 +954,13 @@ def doMainMenu(database, useTor=False, circuitManager=None):
 # this is a function for managing menu hierarchies; once called, a menu presents
 # application flows available to the user. If called from a flow selected in a previous
 # method menu, the menu becomes a new branch one step further from the root menu
-def doMethodMenu(query, menuOptions, showItemNumber = True):
+def doMethodMenu(query, menuOptions, showItemNumber = True, adHocKeys = []):
     index = 0
     try:
         while True:
             methodMenuDecision, index = doSelectionQuery(query, menuOptions, 
                     initialIndex=index, queryStyle=CombinedQuery,
-                    showItemNumber=showItemNumber)
+                    showItemNumber=showItemNumber, adHocKeys=adHocKeys)
             try:
                 result = methodMenuDecision.executeDecision()
             except KeyboardInterrupt:
