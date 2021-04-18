@@ -62,7 +62,7 @@ When in a menu, the user can press `G` (upper case) to go to the last menu item.
 When in a menu, the user can type a number and then press either `Enter` or `l` or `KEY_RIGHT`
 to jump to the item indicated by the number typed by the user.
 
-When in a menu, the user can press `ENTER`, `l` or `KEY_RIGHT` to select the highlighted itemm if no
+When in a menu, the user can press `ENTER`, `l` or `KEY_RIGHT` to select the highlighted item, if no
 number has been typed since last jump.
 
 When in a menu, the user can press `q`, `<Ctrl>-C`, `h` or `KEY_LEFT` to go back to the previous menu.
