@@ -409,17 +409,25 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
     curses.curs_set(0)
     validChars = [ord(letter) for letter in \
             'qwertyuiopasdfghjklzxcvbnmåäöQWERTYUIOPASDFGHJKLZXCVBNMÅÄÖ1234567890 _+']
+    curserPosition = 0
     userInputChars = []
     while True:
-        printMenu(query, [''.join(userInputChars)], stdscr, 0,
+        printMenu(query, [''.join(userInputChars), ''.join(['—' if i==curserPosition else
+            ' ' for i in range(maxInputLength)])], stdscr, 0,
                 xAlignment=maxInputLength//2, showItemNumber=False)
         key = stdscr.getch()
         if key == curses.KEY_BACKSPACE:
-            if userInputChars: userInputChars.pop()
+            if userInputChars: userInputChars.pop(curserPosition-1)
+            curserPosition = max(0, curserPosition-1)
         elif key in [curses.KEY_ENTER, 10, 13]:
             return ''.join(userInputChars)
         elif key in validChars and len(userInputChars) < maxInputLength:
-            userInputChars.append(chr(key))
+            userInputChars.insert(curserPosition,chr(key))
+            curserPosition = min(maxInputLength, curserPosition+1)
+        elif key == curses.KEY_LEFT:
+            curserPosition = max(0, curserPosition-1)
+        elif key == curses.KEY_RIGHT:
+            curserPosition = min(len(userInputChars), curserPosition+1)
 
 # This function is used to visually represent a query and a number of menu items to the 
 # user, by using nCurses. It is used for all text printing in the program (even where
