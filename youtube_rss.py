@@ -282,6 +282,14 @@ class MarkAllAsReadKey(AdHocKey):
                 )
         AdHocKey.__init__(self, key=key, item=item, activationIndex=activationIndex)
 
+class MarkEntryAsReadKey(AdHocKey):
+    def __init__(self, video, activationIndex, key=ord('a')):
+        item =  MethodMenuDecision(
+                    "mark video as read",
+                    lambda video : video.update({'seen':(not video['seen'])}),
+                    video
+                )
+        AdHocKey.__init__(self, key=key, item=item, activationIndex=activationIndex)
 
 #############
 # functions #
@@ -838,8 +846,15 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor):
             useTor
         ) for video in videos
     ]
+
+    adHocKeys = [
+        MarkEntryAsReadKey(
+            video,
+            i+1
+        ) for i, video in enumerate(videos)
+    ]
     menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
-    doMethodMenu("Which video do you want to watch?", menuOptions)
+    doMethodMenu("Which video do you want to watch?", menuOptions, adHocKeys=adHocKeys)
 
 # this is the application level flow entered when the user has selected a video to watch
 # while browsing its current subscriptions
