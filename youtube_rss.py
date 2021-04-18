@@ -736,8 +736,7 @@ def doInteractiveBrowseSubscriptions(database, useTor):
             FeedDescriber(
                 database['feeds'][database['title to id'][channelTitle]],
                 channelTitle
-            ),
-            doSelectVideoFromSubscription,
+            ), doSelectVideoFromSubscription,
             database,
             channelTitle,
             useTor
@@ -812,8 +811,7 @@ def doStartupMenu(database):
             "Yes",
             doStartupWithTor,
             database
-        ),
-        MethodMenuDecision(
+        ), MethodMenuDecision(
             "No",
             doMainMenu,
             database
@@ -830,8 +828,7 @@ def doStartupWithTor(database):
                 "Yes",
                 doMainMenu,
                 database
-            ),
-            MethodMenuDecision(
+            ), MethodMenuDecision(
                 "No",
                 doNotifyAndReturnFromMenu,
                 "Can't find Tor daemon. Exiting program."
@@ -853,33 +850,28 @@ def doMainMenu(database, useTor=False, circuitManager=None):
             database,
             useTor=useTor,
             circuitManager=circuitManager
-        ),
-        MethodMenuDecision( 
+        ), MethodMenuDecision( 
             "Refresh subscriptions",
             doRefreshSubscriptions,
             database,
             useTor=useTor,
             circuitManager=circuitManager
-        ),
-        MethodMenuDecision( 
+        ), MethodMenuDecision( 
             "Browse subscriptions",
             doInteractiveBrowseSubscriptions,
             database,
             useTor = useTor
-        ),
-        MethodMenuDecision( 
+        ), MethodMenuDecision( 
             "Subscribe to new channel",
             doInteractiveChannelSubscribe,
             database,
             useTor=useTor,
             circuitManager=circuitManager
-        ),
-        MethodMenuDecision( 
+        ), MethodMenuDecision( 
             "Unsubscribe from channel",
             doInteractiveChannelUnsubscribe,
             database
-        ),
-        MethodMenuDecision(
+        ), MethodMenuDecision(
             "Quit",
             doReturnFromMenu
         )
