@@ -280,7 +280,7 @@ class MarkAllAsReadKey(AdHocKey):
                     database,
                     channelId
                 )
-        AdHocKey.__init__(self, key, item, activationIndex)
+        AdHocKey.__init__(self, key=key, item=item, activationIndex=activationIndex)
 
 
 #############
@@ -337,15 +337,17 @@ def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery,
                 jumpNumStr = ''.join(jumpNumList))
         key = stdscr.getch()
         # Ad hoc keys should always take first precedence
+
         if key in adHocKeys:
-            index = adHocKeys.index(key)
-            if adHocKeys[index].isValidIndex(choiceIndex):
-                if queryStyle is ItemQuery:
-                    return adHocKeys[index].item
-                elif queryStyle is IndexQuery:
-                    return choiceIndex
-                elif queryStyle is CombinedQuery:
-                    return adHocKeys[index].item, choiceIndex
+            for adHocKey in adHocKeys:
+                if adHocKey.isValidIndex(choiceIndex):
+                    if queryStyle is ItemQuery:
+                        return adHocKey.item
+                    elif queryStyle is IndexQuery:
+                        return choiceIndex
+                    elif queryStyle is CombinedQuery:
+                        return adHocKey.item, choiceIndex
+
         elif key in [curses.KEY_UP, ord('k')]:
             jumpNumList = []
             choiceIndex = (choiceIndex-1)%len(options)
