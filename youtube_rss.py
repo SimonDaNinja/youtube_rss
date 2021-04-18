@@ -313,6 +313,14 @@ def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery,
         elif key == curses.KEY_BACKSPACE:
             if jumpNumList:
                 jumpNumList.pop()
+        elif key == ord('g'):
+            jumpNumList = []
+            choiceIndex = 0
+        elif key == ord('G'):
+            jumpNumList = []
+            choiceIndex = len(options)-1
+        elif key == ord('q'):
+            raise KeyboardInterrupt
         elif key in [curses.KEY_ENTER, 10, 13]:
             if jumpNumList:
                 jumpNum = int(''.join(jumpNumList))
