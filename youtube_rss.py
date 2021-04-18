@@ -231,12 +231,21 @@ class MethodMenuDecision:
     def executeDecision(self):
         return self.function(*self.args, **self.kwargs)
 
-class FeedVideoContainer:
+class FeedVideoDescriber:
     def __init__(self, video):
         self.video = video
 
     def __str__(self):
         return self.video['title'] + (' (unseen!)' if not self.video['seen'] else '')
+
+class FeedDescriber:
+    def __init__(self, feed, channelTitle):
+        self.feed = feed
+        self.channelTitle = channelTitle
+
+    def __str__(self):
+        return ''.join([self.channelTitle, ': (', str(sum([1 for video in self.feed
+            if not video['seen']])),'/',str(len(self.feed)), ')'])
 
 
 #############
@@ -728,7 +737,8 @@ def doChannelUnsubscribe(database, channelTitle):
 def doInteractiveBrowseSubscriptions(database, useTor):
     menuOptions = [
         MethodMenuDecision(
-            channelTitle,
+            FeedDescriber(database['feeds'][database['title to id'][channelTitle]],
+                channelTitle),
             doSelectVideoFromSubscription,
             database,
             channelTitle,
@@ -752,7 +762,7 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor):
     videos = database['feeds'][channelId]
     menuOptions = [
         MethodMenuDecision(
-            FeedVideoContainer(video),
+            FeedVideoDescriber(video),
             doPlayVideoFromSubscription,
             video,
             useTor
