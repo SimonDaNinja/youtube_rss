@@ -301,10 +301,10 @@ def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery,
         printMenu(query, options, stdscr, choiceIndex, showItemNumber=showItemNumber,
                 jumpNumStr = ''.join(jumpNumList))
         key = stdscr.getch()
-        if key == curses.KEY_UP:
+        if key in [curses.KEY_UP, ord('k')]:
             jumpNumList = []
             choiceIndex = (choiceIndex-1)%len(options)
-        elif key == curses.KEY_DOWN:
+        elif key in [curses.KEY_DOWN, ord('j')]:
             jumpNumList = []
             choiceIndex = (choiceIndex+1)%len(options)
         elif key in [ord(digit) for digit in '1234567890']:
@@ -319,9 +319,9 @@ def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery,
         elif key == ord('G'):
             jumpNumList = []
             choiceIndex = len(options)-1
-        elif key == ord('q'):
+        elif key in [ord('q'), ord('h'), curses.KEY_LEFT]:
             raise KeyboardInterrupt
-        elif key in [curses.KEY_ENTER, 10, 13]:
+        elif key in [curses.KEY_ENTER, 10, 13, ord('l'), curses.KEY_RIGHT]:
             if jumpNumList:
                 jumpNum = int(''.join(jumpNumList))
                 choiceIndex = min(jumpNum-1, len(options)-1)
