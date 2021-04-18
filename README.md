@@ -51,6 +51,10 @@ video, you enter the "search for video" option (although I guess I just did), bu
 the things not immediately obvious when opening the program.
 
 ## Key binds
+The keybindings are designed so that the user can do almost everything necessary by just
+using the arrow keys (except, of course, when writing search queries), or by using the
+`hjkl` keys for vi users.
+
 When in a menu, the user can press `KEY_UP` or `k` to move to the previous menu item.
 
 When in a menu, the user can press `KEY_DOWN` or `j` to move to the next menu item.
