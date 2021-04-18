@@ -276,7 +276,6 @@ def doYesNoQuery(query):
 # This function is where the Ncurses level of doYesNoQuery starts.
 # It should never be called directly, but always through doYesNoQuery!
 def doYnQueryNcurses(stdscr, query):
-    choiceIndex = 0
     return doSelectionQueryNcurses(stdscr, query, ['yes','no'], showItemNumber=False)=='yes'
 
 # This function lets the user choose an object from a list
