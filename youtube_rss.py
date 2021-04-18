@@ -638,8 +638,7 @@ def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
                         playVideo,
                         result.url,
                         useTor=useTor
-                    )
-                    for result in resultList
+                    ) for result in resultList
                 ]
                 menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
                 doMethodMenu(f"Search results for '{query}':",menuOptions)
@@ -671,8 +670,7 @@ def doInteractiveChannelSubscribe(database, useTor=False, circuitManager=None):
                         database,
                         useTor,
                         circuitManager
-                    )
-                    for result in resultList
+                    ) for result in resultList
                 ]
                 menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
                 doMethodMenu(f"search results for '{query}', choose which " + \
@@ -719,8 +717,7 @@ def doInteractiveChannelUnsubscribe(database):
             doChannelUnsubscribe,
             database,
             channelTitle
-        )
-        for channelTitle in database['title to id']
+        ) for channelTitle in database['title to id']
     ]
     menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
     doMethodMenu("Which channel do you want to unsubscribe from?", menuOptions)
@@ -744,8 +741,7 @@ def doInteractiveBrowseSubscriptions(database, useTor):
             database,
             channelTitle,
             useTor
-        )
-        for channelTitle in database['title to id']
+        ) for channelTitle in database['title to id']
     ]
 
     if not menuOptions:
@@ -767,8 +763,7 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor):
             doPlayVideoFromSubscription,
             video,
             useTor
-        )
-        for video in videos
+        ) for video in videos
     ]
     menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
     doMethodMenu("Which video do you want to watch?", menuOptions)
