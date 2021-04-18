@@ -736,8 +736,10 @@ def doChannelUnsubscribe(database, channelTitle):
 def doInteractiveBrowseSubscriptions(database, useTor):
     menuOptions = [
         MethodMenuDecision(
-            FeedDescriber(database['feeds'][database['title to id'][channelTitle]],
-                channelTitle),
+            FeedDescriber(
+                database['feeds'][database['title to id'][channelTitle]],
+                channelTitle
+            ),
             doSelectVideoFromSubscription,
             database,
             channelTitle,
