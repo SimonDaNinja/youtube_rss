@@ -613,7 +613,9 @@ def removeSubscriptionFromDatabaseByChannelId(database, channelId):
 def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False, 
         circuitManager=None):
     localFeeds = database['feeds']
+    open('log','a').write(f'channel list: {channelIdList}' + '\n')
     for channelId in channelIdList:
+        open('log','a').write(f'channel: {channelId}' + '\n')
         localFeed = localFeeds[channelId]
         remoteFeed = getRssEntriesFromChannelId(channelId, useTor=useTor, 
                 circuitManager=circuitManager)
@@ -631,10 +633,6 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
                         break
                 if filteredEntryIsNew:
                     localFeed.insert(0, filteredEntry)
-            return True
-        else:
-            return False
-    return True
 
 # use this function to open a YouTube video url in mpv
 def openUrlInMpv(url, useTor=False, maxResolution=1080):
@@ -1014,6 +1012,7 @@ def doReturnFromMenu():
 ################
 
 if __name__ == '__main__':
+    open('log','w')
     if not os.path.isdir(YOUTUBE_RSS_DIR):
         os.mkdir(YOUTUBE_RSS_DIR)
     if os.path.isfile(DATABASE_PATH):
