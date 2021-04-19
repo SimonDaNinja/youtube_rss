@@ -30,8 +30,8 @@ The program also assumes that [mpv](https://github.com/mpv-player/mpv) is
 installed in the environment. In, for example, Ubuntu, this can be accomplished
 by running `sudo apt-get install mpv`. [youtube-dl](https://github.com/ytdl-org) also
 needs to be installed (I use the latest version on their [official website](https://youtube-dl.org/), and
-at the time of this writing, the version in Ubuntu seems too old to work the way this
-project uses it).
+at the time of this writing, the version in the Ubuntu rebository seems too old to work 
+the way this project uses it).
 
 For using Tor, YouTube\_RSS assumes that Tor is installed and currently running
 on port `9050` (which is the default for the Tor daemon anyway). It also requires that
