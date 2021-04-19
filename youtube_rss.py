@@ -623,7 +623,7 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
                 filteredEntry = getRelevantDictFromFeedParserDict(entry)
                 filteredEntryIsNew = True
                 for i, localEntry in enumerate(localFeed):
-                    if compareFeedDicts(localEntry, filteredEntry):
+                    if localEntry['id'] == filteredEntry['id']:
                         filteredEntryIsNew = False
                         # in case any relevant data about the entry is changed, update it
                         filteredEntry['seen'] = localEntry['seen']
@@ -651,10 +651,6 @@ def openUrlInMpv(url, useTor=False, maxResolution=1080):
         mpvProcess.wait()
         result = -1
     return result == 0
-
-# use this function to see if two RSS entries have the same ID
-def compareFeedDicts(lhs,rhs):
-    return lhs['id'] == rhs['id']
 
 # use this function to get the data we care about from the entries found by the RSS parser
 def getRelevantDictFromFeedParserDict(feedparserDict):
