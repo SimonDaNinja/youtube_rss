@@ -319,7 +319,8 @@ def doYesNoQuery(query):
 # This function is where the Ncurses level of doYesNoQuery starts.
 # It should never be called directly, but always through doYesNoQuery!
 def doYnQueryNcurses(stdscr, query):
-    return doSelectionQueryNcurses(stdscr, query, ['yes','no'], showItemNumber=False)=='yes'
+    return doSelectionQueryNcurses(stdscr, query, ['yes','no'], showItemNumber=False) \
+            =='yes'
 
 # This function lets the user choose an object from a list
 def doSelectionQuery(query, options, queryStyle=ItemQuery, initialIndex=None,
@@ -434,7 +435,8 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
 # user, by using nCurses. It is used for all text printing in the program (even where
 # no application level menu is presented, i.e by simply not providing a query and no
 # menu objects)
-def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=True, jumpNumStr=''):
+def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=True, 
+        jumpNumStr=''):
     stdscr.clear()
     height, width = stdscr.getmaxyx()
     screenCenterX = width//2
