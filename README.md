@@ -20,7 +20,6 @@ The following python modules are used and may need to be installed, e.g. using p
 feedparser
 urllib3
 pysocks
-curses
 ```
 The project also uses [Tor-Requests](https://github.com/SimonDaNinja/tor_requests/tree/db191029791e12a73d02f6533f17371fea6aeed1)
 as a submodule, so make sure to run `git submodule update --init --recursive`
