@@ -199,7 +199,6 @@ class CircuitManager:
         self.nCircuits = 15
         self.i = 0
         self.expiryTime = 0
-        self.initiateCircuitAuths()
 
     def initiateCircuitAuths(self):
         self.circuitAuths=[generateNewSocks5Auth() for i in range(self.nCircuits)]
