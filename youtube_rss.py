@@ -198,18 +198,15 @@ class CircuitManager:
         self.ttl = ttl
         self.nCircuits = 15
         self.i = 0
-        self.expiryTime = None
+        self.expiryTime = 0
         self.initiateCircuitAuths()
 
     def initiateCircuitAuths(self):
         self.circuitAuths=[generateNewSocks5Auth() for i in range(self.nCircuits)]
 
     def getAuth(self):
-        # if circuits have never been used, start ttl timer
-        if self.expiryTime is None:
-            self.expiryTime = time.time() + self.ttl
         # if ttl is over, reinitiate circuit auth list
-        elif self.expiryTime < time.time():
+        if self.expiryTime < time.time():
             self.initiateCircuitAuths()
             self.expiryTime = time.time() + self.ttl
         # circulate over the various auths so that you don't use the same circuit all the
