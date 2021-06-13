@@ -35,7 +35,9 @@ except:
     exit()
 import subprocess
 import os
+import sys
 import time
+import command_line_parser
 
 #############
 # constants #
@@ -43,7 +45,10 @@ import time
 
 HOME = os.environ.get('HOME')
 YOUTUBE_RSS_DIR = '/'.join([HOME,'.youtube_rss'])
+THUMBNAIL_DIR = '/'.join([YOUTUBE_RSS_DIR, 'thumbnails'])
+THUMBNAIL_SEARCH_DIR = '/'.join([THUMBNAIL_DIR, 'search'])
 DATABASE_PATH  = '/'.join([YOUTUBE_RSS_DIR, 'database'])
+LOG_PATH = '/'.join([YOUTUBE_RSS_DIR, 'log'])
 
 HIGHLIGHTED = 1
 NOT_HIGHLIGHTED = 2
@@ -112,14 +117,15 @@ class VideoQueryParser(HTMLParser):
             self.isScriptTag = False
             if 'var ytInitialData' in data:
                 pattern = re.compile('videoId":"([^"]+)","thumbnail":\{"thumbnails":' + \
-                        '\[\{"url":"[^"]+","width":[0-9]+,"height":[0-9]+\},\{"url"' + \
+                        '\[\{"url":"([^"]+)","width":[0-9]+,"height":[0-9]+\},\{"url"' + \
                         ':"[^"]+","width":[0-9]+,"height":[0-9]+\}\]\},"title":\{' + \
                         '"runs":\[\{"text":"[^"]+"\}\],"accessibility":\{' + \
                         '"accessibilityData":\{"label":"([^"]+)"\}')
                 tupleList = pattern.findall(data)
                 resultList = []
                 for tup in tupleList:
-                    resultList.append(VideoQueryObject(videoId = tup[0], title = tup[1]))
+                    resultList.append(VideoQueryObject(videoId = tup[0], 
+                        thumbnail = tup[1], title = tup[2]))
                 self.resultList = resultList
 
 """
@@ -131,6 +137,15 @@ class IndicatorClass:
     def __init__(self):
         raise InstantiateIndicatorClassError
 
+class NoCanvas(IndicatorClass):
+    def __init__(self):
+        pass
+
+    def __exit__(self, dummy1, dummy2, dummy3):
+        pass
+
+    def __enter__(self):
+        pass
 
 # returned from menu method to indicate that application flow should step
 # closer to the root menu
@@ -166,14 +181,20 @@ class InstantiateIndicatorClassError(Exception):
         self.message = message
         Exception.__init__(self, self.message)
 
+class FailedToGetThumbnail(Exception):
+    def __init__(self, message="Couldn't get the thumbnail"):
+        self.message = message
+        Exception.__init__(self, self.message)
+
 """
 Other classes
 """
 
 # contains information from one result item from video query
 class VideoQueryObject:
-    def __init__(self, videoId = None, title = None):
+    def __init__(self, videoId = None, thumbnail=None, title = None):
         self.videoId   = videoId
+        self.thumbnail = thumbnail
         self.title     = title
         if videoId is not None:
             self.url = f"http://youtube.com/watch?v={videoId}"
@@ -235,6 +256,19 @@ class FeedVideoDescriber:
 
     def __str__(self):
         return self.video['title'] + (' (unseen!)' if not self.video['seen'] else '')
+
+    def getThumbnail(self):
+        return self.video['thumbnail']
+
+class VideoQueryObjectDescriber:
+    def __init__(self, videoQueryObject):
+        self.videoQueryObject = videoQueryObject
+
+    def __str__(self):
+        return self.videoQueryObject.title
+
+    def getThumbnail(self):
+        return self.videoQueryObject.thumbnail
 
 class FeedDescriber:
     def __init__(self, feed, channelTitle):
@@ -338,54 +372,55 @@ def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery,
     else:
         choiceIndex = 0
     while True:
-        printMenu(query, options, stdscr, choiceIndex, showItemNumber=showItemNumber,
-                jumpNumStr = ''.join(jumpNumList))
-        key = stdscr.getch()
-        # Ad hoc keys should always take first precedence
+        with (ueberzug.Canvas() if USE_THUMBNAILS else NoCanvas()) as canvas:
+            printMenu(query, options, stdscr, choiceIndex, showItemNumber=showItemNumber,
+                    jumpNumStr = ''.join(jumpNumList), canvas = canvas)
+            key = stdscr.getch()
+            # Ad hoc keys should always take first precedence
 
-        if key in adHocKeys:
-            for adHocKey in adHocKeys:
-                if adHocKey.isValidIndex(choiceIndex):
-                    if queryStyle is ItemQuery:
-                        return adHocKey.item
-                    elif queryStyle is IndexQuery:
-                        return choiceIndex
-                    elif queryStyle is CombinedQuery:
-                        return adHocKey.item, choiceIndex
+            if key in adHocKeys:
+                for adHocKey in adHocKeys:
+                    if adHocKey.isValidIndex(choiceIndex):
+                        if queryStyle is ItemQuery:
+                            return adHocKey.item
+                        elif queryStyle is IndexQuery:
+                            return choiceIndex
+                        elif queryStyle is CombinedQuery:
+                            return adHocKey.item, choiceIndex
 
-        elif key in [curses.KEY_UP, ord('k')]:
-            jumpNumList = []
-            choiceIndex = (choiceIndex-1)%len(options)
-        elif key in [curses.KEY_DOWN, ord('j')]:
-            jumpNumList = []
-            choiceIndex = (choiceIndex+1)%len(options)
-        elif key in [ord(digit) for digit in '1234567890']:
-            if len(jumpNumList) < 6:
-                jumpNumList.append(chr(key))
-        elif key == curses.KEY_BACKSPACE:
-            if jumpNumList:
-                jumpNumList.pop()
-        elif key == ord('g'):
-            jumpNumList = []
-            choiceIndex = 0
-        elif key == ord('G'):
-            jumpNumList = []
-            choiceIndex = len(options)-1
-        elif key in [ord('q'), ord('h'), curses.KEY_LEFT]:
-            raise KeyboardInterrupt
-        elif key in [curses.KEY_ENTER, 10, 13, ord('l'), curses.KEY_RIGHT]:
-            if jumpNumList:
-                jumpNum = int(''.join(jumpNumList))
-                choiceIndex = min(jumpNum-1, len(options)-1)
+            elif key in [curses.KEY_UP, ord('k')]:
                 jumpNumList = []
-            elif queryStyle is ItemQuery:
-                return options[choiceIndex]
-            elif queryStyle is IndexQuery:
-                return choiceIndex
-            elif queryStyle is CombinedQuery:
-                return options[choiceIndex], choiceIndex
-            else:
-                raise UnknownQueryStyle
+                choiceIndex = (choiceIndex-1)%len(options)
+            elif key in [curses.KEY_DOWN, ord('j')]:
+                jumpNumList = []
+                choiceIndex = (choiceIndex+1)%len(options)
+            elif key in [ord(digit) for digit in '1234567890']:
+                if len(jumpNumList) < 6:
+                    jumpNumList.append(chr(key))
+            elif key == curses.KEY_BACKSPACE:
+                if jumpNumList:
+                    jumpNumList.pop()
+            elif key == ord('g'):
+                jumpNumList = []
+                choiceIndex = 0
+            elif key == ord('G'):
+                jumpNumList = []
+                choiceIndex = len(options)-1
+            elif key in [ord('q'), ord('h'), curses.KEY_LEFT]:
+                raise KeyboardInterrupt
+            elif key in [curses.KEY_ENTER, 10, 13, ord('l'), curses.KEY_RIGHT]:
+                if jumpNumList:
+                    jumpNum = int(''.join(jumpNumList))
+                    choiceIndex = min(jumpNum-1, len(options)-1)
+                    jumpNumList = []
+                elif queryStyle is ItemQuery:
+                    return options[choiceIndex]
+                elif queryStyle is IndexQuery:
+                    return choiceIndex
+                elif queryStyle is CombinedQuery:
+                    return options[choiceIndex], choiceIndex
+                else:
+                    raise UnknownQueryStyle
 
     
 # This function displays a piece of information to the user until they confirm having
@@ -432,7 +467,9 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
 # no application level menu is presented, i.e by simply not providing a query and no
 # menu objects)
 def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=True, 
-        jumpNumStr=''):
+        jumpNumStr='', canvas = None):
+    if canvas is None:
+        canvas = NoCanvas()
     stdscr.clear()
     height, width = stdscr.getmaxyx()
     screenCenterX = width//2
@@ -477,6 +514,16 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=
         if itemX + len(itemString) >= width-1:
             itemString = itemString[:max((width-itemX-2),0)]
         attr = curses.color_pair(HIGHLIGHTED if i == choiceIndex else NOT_HIGHLIGHTED)
+        if i == choiceIndex and hasattr(item, 'description') and hasattr(item.description,
+                'getThumbnail') and type(canvas) is not NoCanvas:
+            thumbnailWidth = itemX-1
+            thumbnailHeight = height-3
+            if not (thumbnailWidth <=0 or thumbnailHeight <=0):
+                thumbnailPlacement = canvas.create_placement('thumbnail', x=0, y=2, 
+                        scaler=ueberzug.ScalerOption.CONTAIN.value, width = thumbnailWidth, 
+                        height = thumbnailHeight)
+                thumbnailPlacement.path = item.description.getThumbnail()
+                thumbnailPlacement.visibility = ueberzug.Visibility.VISIBLE
         stdscr.attron(attr)
         itemY = screenCenterY - nRowsToPrint//2 + i + 2 - offset
         if itemY >= 0 and itemY < height-1 and itemString:
@@ -559,6 +606,11 @@ def getVideoQueryResults(query, useTor=False, circuitManager=None):
     htmlContent = getYouTubeHtml(url, useTor=useTor, circuitManager=circuitManager)
     parser = VideoQueryParser()
     parser.feed(htmlContent)
+    if USE_THUMBNAILS:
+        if os.path.isdir(THUMBNAIL_SEARCH_DIR):
+            shutil.rmtree(THUMBNAIL_SEARCH_DIR)
+        os.mkdir(THUMBNAIL_SEARCH_DIR)
+        getSearchThumbnails(parser.resultList, useTor=useTor)
     return parser.resultList
 
 # use this function to get rss entries from channel id
@@ -617,16 +669,48 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
             remoteFeed.reverse()
             for entry in remoteFeed:
                 filteredEntry = getRelevantDictFromFeedParserDict(entry)
+
                 filteredEntryIsNew = True
                 for i, localEntry in enumerate(localFeed):
                     if localEntry['id'] == filteredEntry['id']:
                         filteredEntryIsNew = False
                         # in case any relevant data about the entry is changed, update it
                         filteredEntry['seen'] = localEntry['seen']
+                        filteredEntry['thumbnail'] = localEntry['thumbnail']
                         localFeed[i] = filteredEntry
                         break
                 if filteredEntryIsNew:
                     localFeed.insert(0, filteredEntry)
+    if USE_THUMBNAILS:
+        getThumbnails(channelIdList, database, useTor)
+
+def getThumbnails(channelIdList, database, useTor=False):
+    feeds = database['feeds']
+    for channelId in channelIdList:
+        feed = feeds[channelId]
+        for entry in feed:
+            if 'https://' not in entry['thumbnail']:
+                continue
+            command = []
+            if useTor:
+                command += ['torsocks','-i']
+            videoId = entry['id'].split(':')[-1]
+            thumbnailFileName = '/'.join([THUMBNAIL_DIR, videoId + 
+                    '.jpg'])
+            command += ['wget', '-O', thumbnailFileName, entry['thumbnail']]
+            try:
+                downloadThumbnailProcess = subprocess.Popen(command, 
+                        stdout = subprocess.DEVNULL, stderr = subprocess.STDOUT)
+                entry['thumbnail'] = thumbnailFileName
+                downloadThumbnailProcess.wait()
+                result = downloadThumbnailProcess.poll()
+            except KeyboardInterrupt:
+                downloadThumbnailProcess.kill()
+                downloadThumbnailProcess.wait()
+                result = -1
+            if result != 0:
+                raise FailedToGetThumbnail
+
 
 # use this function to open a YouTube video url in mpv
 def openUrlInMpv(url, useTor=False, maxResolution=1080):
@@ -706,7 +790,7 @@ def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
             if resultList:
                 menuOptions = [
                     MethodMenuDecision(
-                        str(result),
+                        VideoQueryObjectDescriber(result),
                         playVideo,
                         result.url,
                         useTor=useTor
@@ -721,7 +805,35 @@ def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
         except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                 querying = False
-            
+        except FailedToGetThumbnail:
+            if not doYesNoQuery("Something went wrong while fetching thumbnails. Try again?"):
+                querying = False
+    if os.path.isdir(THUMBNAIL_SEARCH_DIR):
+        shutil.rmtree(THUMBNAIL_SEARCH_DIR)
+
+
+def getSearchThumbnails(resultList, useTor = False):
+    for result in resultList:
+        command = []
+        if useTor:
+            command += ['torsocks','-i']
+        videoId = result.videoId.split(':')[-1]
+        thumbnailFileName = '/'.join([THUMBNAIL_SEARCH_DIR, videoId + 
+                '.jpg'])
+        command += ['wget', '-O', thumbnailFileName, result.thumbnail]
+        try:
+            downloadThumbnailProcess = subprocess.Popen(command, 
+                    stdout = subprocess.DEVNULL, stderr = subprocess.STDOUT)
+            result.thumbnail = thumbnailFileName
+            downloadThumbnailProcess.wait()
+            result = downloadThumbnailProcess.poll()
+        except KeyboardInterrupt:
+            downloadThumbnailProcess.kill()
+            downloadThumbnailProcess.wait()
+            result = -1
+        if result != 0:
+            raise FailedToGetThumbnail
+
 
 # this is the application level flow entered when the user has chosen to subscribe to a
 # new channel
@@ -891,6 +1003,9 @@ def doRefreshSubscriptions(database, useTor=False, circuitManager=None):
         except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                 refreshing = False
+        except FailedToGetThumbnail:
+            if not doYesNoQuery("Something went wrong while fetching thumbnails. Try again?"):
+                querying = False
     outputDatabaseToFile(database, DATABASE_PATH)
 
 def doStartupMenu(database):
@@ -1002,8 +1117,27 @@ def doReturnFromMenu():
 ################
 
 if __name__ == '__main__':
+    flags = command_line_parser.readFlags(sys.argv)
+    for flag in flags:
+        if flag not in command_line_parser.allowedFlags:
+            raise command_line_parser.CommandLineParseError
+
+    USE_THUMBNAILS = False
+    if 'use-thumbnails' in flags:
+        flag = flags[flags.index('use-thumbnails')]
+        flag.treated = True
+        USE_THUMBNAILS = True
+        import shutil
+        import ueberzug.lib.v0 as ueberzug
+
+    for flag in flags:
+        if not flag.treated:
+            raise command_line_parser.CommandLineParseError
+
     if not os.path.isdir(YOUTUBE_RSS_DIR):
         os.mkdir(YOUTUBE_RSS_DIR)
+    if not os.path.isdir(THUMBNAIL_DIR) and USE_THUMBNAILS:
+        os.mkdir(THUMBNAIL_DIR)
     if os.path.isfile(DATABASE_PATH):
         database = parseDatabaseFile(DATABASE_PATH)
     else:

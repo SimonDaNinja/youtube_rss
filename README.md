@@ -21,6 +21,9 @@ feedparser
 urllib3
 pysocks
 ```
+If you want to get thumbnails for videos, you will additionally need to install the
+module `ueberzug`, e.g. using pip.
+
 The project also uses [Tor-Requests](https://github.com/SimonDaNinja/tor_requests/tree/db191029791e12a73d02f6533f17371fea6aeed1)
 as a submodule, so make sure to run `git submodule update --init --recursive`
 before using YouTube\_RSS.
@@ -76,6 +79,17 @@ When browsing subscriptions, in the menu where channels are displayed as menu it
 When browsing subscriptions, in the menu where videos from a particular channel are displayed as menu
 items, the user can press `a` to toggle the highlighted entry as seen or unseen
 
+## Thumbnails
+Thumbnails are disabled by default. If you want to view video thumbnails, you need to run
+YouTube\_RSS with the option `--use-thumbnails`. If you intend to do this in the long run,
+you might want to alias it into the base command.
+
+Thumbnail support is still a bit new and experimental, so for now, use it at your own
+risk. The main concern to keep in mind is that thumbnail files will take up additional
+storage.
+
 ## Files managed by the program
 The database file that is used to keep track of subscriptions is saved under `~/.youtube_rss/database`,
 and is formated as json.
+
+If you are using thumbnails, thumbnail files are stored under `~/.youtube_rss/thumbnails/`
