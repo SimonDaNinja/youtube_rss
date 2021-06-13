@@ -551,15 +551,20 @@ def unProxiedGetHttpContent(url, session=None, method = 'GET', postPayload = {})
             return session.post(url, postPayload)
 
 # use this function to get content (typically hypertext or xml) using HTTP from YouTube
-def getHttpContent(url, useTor, circuitManager):
+def getHttpContent(url, useTor, circuitManager=None, auth=None):
     session = req.Session()
     session.headers['Accept-Language']='en-US'
     # This cookie lets us avoid the YouTube consent page
     session.cookies['CONSENT']='YES+'
     if useTor:
-        socks5Username, socks5Password = circuitManager.getAuth()
-        response = getHttpResponseUsingSocks5(url, session=session, 
-                username=socks5Username, password=socks5Password)
+        if auth is not None:
+            socks5Username, socks5Password = auth
+            response = getHttpResponseUsingSocks5(url, session=session, 
+                    username=socks5Username, password=socks5Password)
+        else:
+            socks5Username, socks5Password = circuitManager.getAuth()
+            response = getHttpResponseUsingSocks5(url, session=session, 
+                    username=socks5Username, password=socks5Password)
     else:
         response = unProxiedGetHttpContent(url, session=session)
 
@@ -770,6 +775,10 @@ def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
 def getThumbnails(channelIdList, database, useTor=False, circuitManager = None):
     feeds = database['feeds']
     for channelId in channelIdList:
+        if circuitManager is not None:
+            auth = circuitManager.getAuth()
+        else:
+            auth = None
         feed = feeds[channelId]
         for entry in feed:
             if 'thumbnail file' in entry:
@@ -778,17 +787,21 @@ def getThumbnails(channelIdList, database, useTor=False, circuitManager = None):
             thumbnailFileName = '/'.join([THUMBNAIL_DIR, videoId + 
                     '.jpg'])
             thumbnailContent = getHttpContent(entry['thumbnail'], useTor=useTor,
-                    circuitManager=circuitManager)
+                    auth = auth)
             entry['thumbnail file'] = thumbnailFileName
             open(thumbnailFileName, 'wb').write(thumbnailContent.content)
 
 def getSearchThumbnails(resultList, useTor = False, circuitManager = None):
+    if circuitManager is not None:
+        auth = circuitManager.getAuth()
+    else:
+        auth = None
     for result in resultList:
         videoId = result.videoId.split(':')[-1]
         thumbnailFileName = '/'.join([THUMBNAIL_SEARCH_DIR, videoId + 
                 '.jpg'])
         thumbnailContent = getHttpContent(result.thumbnail, useTor=useTor,
-                circuitManager=circuitManager)
+                auth = auth)
         result.thumbnailFile = thumbnailFileName
         open(thumbnailFileName, 'wb').write(thumbnailContent.content)
 
