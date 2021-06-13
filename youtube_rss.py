@@ -677,7 +677,8 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
                         filteredEntryIsNew = False
                         # in case any relevant data about the entry is changed, update it
                         filteredEntry['seen'] = localEntry['seen']
-                        if filteredEntry['thumbnail'] == localEntry['thumbnail']:
+                        if filteredEntry['thumbnail'] == localEntry['thumbnail'] and \
+                                'thumbnail file' in filteredEntry:
                             filteredEntry['thumbnail file'] = localEntry['thumbnail file']
                         localFeed[i] = filteredEntry
                         break
