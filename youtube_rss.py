@@ -253,7 +253,7 @@ class FeedVideoDescriber:
         return self.video['title'] + (' (unseen!)' if not self.video['seen'] else '')
 
     def getThumbnail(self):
-        return self.video['thumbnail']
+        return self.video['thumbnail file']
 
 class VideoQueryObjectDescriber:
     def __init__(self, videoQueryObject):
@@ -657,7 +657,8 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
                         filteredEntryIsNew = False
                         # in case any relevant data about the entry is changed, update it
                         filteredEntry['seen'] = localEntry['seen']
-                        filteredEntry['thumbnail'] = localEntry['thumbnail']
+                        if filteredEntry['thumbnail'] == localEntry['thumbnail']:
+                            filteredEntry['thumbnail file'] = localEntry['thumbnail file']
                         localFeed[i] = filteredEntry
                         break
                 if filteredEntryIsNew:
@@ -670,14 +671,14 @@ def getThumbnails(channelIdList, database, useTor=False, circuitManager = None):
     for channelId in channelIdList:
         feed = feeds[channelId]
         for entry in feed:
-            if 'https://' not in entry['thumbnail']:
+            if 'thumbnail file' in entry:
                 continue
             videoId = entry['id'].split(':')[-1]
             thumbnailFileName = '/'.join([THUMBNAIL_DIR, videoId + 
                     '.jpg'])
             thumbnailContent = getHttpContent(entry['thumbnail'], useTor=useTor,
                     circuitManager=circuitManager)
-            entry['thumbnail'] = thumbnailFileName
+            entry['thumbnail file'] = thumbnailFileName
             open(thumbnailFileName, 'wb').write(thumbnailContent.content)
 
 # use this function to open a YouTube video url in mpv
