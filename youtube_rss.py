@@ -181,11 +181,6 @@ class InstantiateIndicatorClassError(Exception):
         self.message = message
         Exception.__init__(self, self.message)
 
-class FailedToGetThumbnail(Exception):
-    def __init__(self, message="Couldn't get the thumbnail"):
-        self.message = message
-        Exception.__init__(self, self.message)
-
 """
 Other classes
 """
@@ -556,7 +551,7 @@ def unProxiedGetHttpContent(url, session=None, method = 'GET', postPayload = {})
             return session.post(url, postPayload)
 
 # use this function to get content (typically hypertext or xml) using HTTP from YouTube
-def getYouTubeHtml(url, useTor, circuitManager):
+def getHttpContent(url, useTor, circuitManager):
     session = req.Session()
     session.headers['Accept-Language']='en-US'
     # This cookie lets us avoid the YouTube consent page
@@ -568,21 +563,7 @@ def getYouTubeHtml(url, useTor, circuitManager):
     else:
         response = unProxiedGetHttpContent(url, session=session)
 
-    return response.text
-
-# if you have a channel url, you can use this function to extract the rss address
-def getRssAddressFromChannelUrl(url, useTor=False):
-    try:
-        response = getYouTubeHtml(url, useTor=useTor)
-    except req.exceptions.ConnectionError:
-        return None
-    if response.text is not None:
-        htmlContent = response.text
-        parser = RssAddressParser()
-        parser.feed(htmlContent)
-        return parser.rssAddress
-    else:
-        return None
+    return response
 
 # if you have a channel id, you can use this function to get the rss address
 def getRssAddressFromChannelId(channelId):
@@ -593,7 +574,7 @@ def getRssAddressFromChannelId(channelId):
 def getChannelQueryResults(query, useTor=False, circuitManager=None):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
             '&sp=EgIQAg%253D%253D'
-    htmlContent = getYouTubeHtml(url, useTor=useTor, circuitManager=circuitManager)
+    htmlContent = getHttpContent(url, useTor=useTor, circuitManager=circuitManager).text
     parser = ChannelQueryParser()
     parser.feed(htmlContent)
     return parser.resultList
@@ -603,7 +584,7 @@ def getChannelQueryResults(query, useTor=False, circuitManager=None):
 def getVideoQueryResults(query, useTor=False, circuitManager=None):
     url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
             '&sp=EgIQAQ%253D%253D'
-    htmlContent = getYouTubeHtml(url, useTor=useTor, circuitManager=circuitManager)
+    htmlContent = getHttpContent(url, useTor=useTor, circuitManager=circuitManager).text
     parser = VideoQueryParser()
     parser.feed(htmlContent)
     if USE_THUMBNAILS:
@@ -616,7 +597,7 @@ def getVideoQueryResults(query, useTor=False, circuitManager=None):
 # use this function to get rss entries from channel id
 def getRssEntriesFromChannelId(channelId, useTor=False, circuitManager=None):
     rssAddress = getRssAddressFromChannelId(channelId)
-    rssContent = getYouTubeHtml(rssAddress, useTor, circuitManager=circuitManager)
+    rssContent = getHttpContent(rssAddress, useTor, circuitManager=circuitManager).text
     entries = feedparser.parse(rssContent)['entries']
     return entries
 
@@ -682,35 +663,22 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
                 if filteredEntryIsNew:
                     localFeed.insert(0, filteredEntry)
     if USE_THUMBNAILS:
-        getThumbnails(channelIdList, database, useTor)
+        getThumbnails(channelIdList, database, useTor, circuitManager=circuitManager)
 
-def getThumbnails(channelIdList, database, useTor=False):
+def getThumbnails(channelIdList, database, useTor=False, circuitManager = None):
     feeds = database['feeds']
     for channelId in channelIdList:
         feed = feeds[channelId]
         for entry in feed:
             if 'https://' not in entry['thumbnail']:
                 continue
-            command = []
-            if useTor:
-                command += ['torsocks','-i']
             videoId = entry['id'].split(':')[-1]
             thumbnailFileName = '/'.join([THUMBNAIL_DIR, videoId + 
                     '.jpg'])
-            command += ['wget', '-O', thumbnailFileName, entry['thumbnail']]
-            try:
-                downloadThumbnailProcess = subprocess.Popen(command, 
-                        stdout = subprocess.DEVNULL, stderr = subprocess.STDOUT)
-                entry['thumbnail'] = thumbnailFileName
-                downloadThumbnailProcess.wait()
-                result = downloadThumbnailProcess.poll()
-            except KeyboardInterrupt:
-                downloadThumbnailProcess.kill()
-                downloadThumbnailProcess.wait()
-                result = -1
-            if result != 0:
-                raise FailedToGetThumbnail
-
+            thumbnailContent = getHttpContent(entry['thumbnail'], useTor=useTor,
+                    circuitManager=circuitManager)
+            entry['thumbnail'] = thumbnailFileName
+            open(thumbnailFileName, 'wb').write(thumbnailContent.content)
 
 # use this function to open a YouTube video url in mpv
 def openUrlInMpv(url, useTor=False, maxResolution=1080):
@@ -804,9 +772,6 @@ def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
                 querying = False
         except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
-                querying = False
-        except FailedToGetThumbnail:
-            if not doYesNoQuery("Something went wrong while fetching thumbnails. Try again?"):
                 querying = False
     if os.path.isdir(THUMBNAIL_SEARCH_DIR):
         shutil.rmtree(THUMBNAIL_SEARCH_DIR)
@@ -1003,9 +968,6 @@ def doRefreshSubscriptions(database, useTor=False, circuitManager=None):
         except req.exceptions.ConnectionError:
             if not doYesNoQuery("Something went wrong with the connection. Try again?"):
                 refreshing = False
-        except FailedToGetThumbnail:
-            if not doYesNoQuery("Something went wrong while fetching thumbnails. Try again?"):
-                querying = False
     outputDatabaseToFile(database, DATABASE_PATH)
 
 def doStartupMenu(database):
