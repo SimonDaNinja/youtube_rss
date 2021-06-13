@@ -624,6 +624,21 @@ def addSubscriptionToDatabase(database, channelId, channelTitle, refresh=False,
         refreshSubscriptionsByChannelId([channelId], database, useTor=useTor, 
                 circuitManager=circuitManager)
 
+def deleteThumbnailsByChannelTitle(database, channelTitle):
+    if channelTitle not in database['title to id']:
+        return
+    channelId = database['title to id'][channelTitle]
+    deleteThumbnailsByChannelId(database, channelId)
+    return
+
+def deleteThumbnailsByChannelId(database, channelId):
+    if channelId not in database['id to title']:
+        return
+    feed = database['feeds'][channelId]
+    for entry in feed:
+        if os.path.isfile(entry['thumbnail file']):
+            os.remove(entry['thumbnail file'])
+
 # use this function to remove a subscription from the database by channel title
 def removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle):
     if channelTitle not in database['title to id']:
@@ -879,6 +894,8 @@ def doInteractiveChannelUnsubscribe(database):
 # this is the application level flow entered when the user has chosen a channel that it
 # wants to unsubscribe from
 def doChannelUnsubscribe(database, channelTitle):
+    if USE_THUMBNAILS:
+        deleteThumbnailsByChannelTitle(database, channelTitle)
     removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
     return ReturnFromMenu
 
