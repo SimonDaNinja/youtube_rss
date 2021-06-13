@@ -682,12 +682,16 @@ def getThumbnails(channelIdList, database, useTor=False, circuitManager = None):
             open(thumbnailFileName, 'wb').write(thumbnailContent.content)
 
 # use this function to open a YouTube video url in mpv
-def openUrlInMpv(url, useTor=False, maxResolution=1080):
+def openUrlInMpv(url, useTor=False, maxResolution=1080, circuitManager = None):
     try:
         command = []
         if useTor:
+            auth = circuitManager.getAuth()
             command.append('torsocks')
-            command.append('-i')
+            command.append('-u')
+            command.append(auth[0])
+            command.append('-p')
+            command.append(auth[1])
         command += ['mpv', \
                 f'--ytdl-format=bestvideo[height=?{maxResolution}]+bestaudio/best']
         command.append(url)
@@ -762,7 +766,8 @@ def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
                         VideoQueryObjectDescriber(result),
                         playVideo,
                         result.url,
-                        useTor=useTor
+                        useTor=useTor,
+                        circuitManager=circuitManager
                     ) for result in resultList
                 ]
                 menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
@@ -880,7 +885,7 @@ def doChannelUnsubscribe(database, channelTitle):
 
 # this is the application level flow entered when the user has chosen to browse
 # its current subscriptions
-def doInteractiveBrowseSubscriptions(database, useTor):
+def doInteractiveBrowseSubscriptions(database, useTor, circuitManager):
     menuOptions = [
         MethodMenuDecision(
             FeedDescriber(
@@ -889,7 +894,8 @@ def doInteractiveBrowseSubscriptions(database, useTor):
             ), doSelectVideoFromSubscription,
             database,
             channelTitle,
-            useTor
+            useTor,
+            circuitManager
         ) for channelTitle in database['title to id']
     ]
 
@@ -912,7 +918,7 @@ def doInteractiveBrowseSubscriptions(database, useTor):
 # this is the application level flow entered when the user has chosen a channel while
 # browsing its current subscriptions;
 # the user now gets to select a video from the channel to watch
-def doSelectVideoFromSubscription(database, channelTitle, useTor):
+def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager):
     channelId = database['title to id'][channelTitle]
     videos = database['feeds'][channelId]
     menuOptions = [
@@ -920,7 +926,8 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor):
             FeedVideoDescriber(video),
             doPlayVideoFromSubscription,
             video,
-            useTor
+            useTor,
+            circuitManager
         ) for video in videos
     ]
 
@@ -935,22 +942,22 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor):
 
 # this is the application level flow entered when the user has selected a video to watch
 # while browsing its current subscriptions
-def doPlayVideoFromSubscription(video, useTor):
-    result = playVideo(video['link'], useTor)
+def doPlayVideoFromSubscription(video, useTor, circuitManager):
+    result = playVideo(video['link'], useTor, circuitManager = circuitManager)
     if not video['seen']:
         video['seen'] = result
         outputDatabaseToFile(database, DATABASE_PATH)
 
 # this is the application level flow entered when the user is watching any video from
 # YouTube
-def playVideo(videoUrl, useTor=False):
+def playVideo(videoUrl, useTor=False, circuitManager = None):
     resolutionMenuList = [1080, 720, 480, 240]
     maxResolution = doSelectionQuery("Which maximum resolution do you want to use?",
             resolutionMenuList)
     result = False
     while not result:
         result = doWaitScreen("playing video...", openUrlInMpv, videoUrl, useTor=useTor,
-                maxResolution=maxResolution)
+                maxResolution=maxResolution, circuitManager = circuitManager)
         if result or not doYesNoQuery(f"Something went wrong when playing the " + \
                 "video. Try again?"):
             break
@@ -1026,7 +1033,8 @@ def doMainMenu(database, useTor=False, circuitManager=None):
             "Browse subscriptions",
             doInteractiveBrowseSubscriptions,
             database,
-            useTor = useTor
+            useTor = useTor,
+            circuitManager = circuitManager
         ), MethodMenuDecision( 
             "Subscribe to new channel",
             doInteractiveChannelSubscribe,
