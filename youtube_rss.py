@@ -263,7 +263,7 @@ class VideoQueryObjectDescriber:
         return self.videoQueryObject.title
 
     def getThumbnail(self):
-        return self.videoQueryObject.thumbnail
+        return self.videoQueryObject.thumbnailFile
 
 class FeedDescriber:
     def __init__(self, feed, channelTitle):
@@ -591,7 +591,7 @@ def getVideoQueryResults(query, useTor=False, circuitManager=None):
         if os.path.isdir(THUMBNAIL_SEARCH_DIR):
             shutil.rmtree(THUMBNAIL_SEARCH_DIR)
         os.mkdir(THUMBNAIL_SEARCH_DIR)
-        getSearchThumbnails(parser.resultList, useTor=useTor)
+        getSearchThumbnails(parser.resultList, useTor=useTor, circuitManager=circuitManager)
     return parser.resultList
 
 # use this function to get rss entries from channel id
@@ -665,21 +665,6 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
                     localFeed.insert(0, filteredEntry)
     if USE_THUMBNAILS:
         getThumbnails(channelIdList, database, useTor, circuitManager=circuitManager)
-
-def getThumbnails(channelIdList, database, useTor=False, circuitManager = None):
-    feeds = database['feeds']
-    for channelId in channelIdList:
-        feed = feeds[channelId]
-        for entry in feed:
-            if 'thumbnail file' in entry:
-                continue
-            videoId = entry['id'].split(':')[-1]
-            thumbnailFileName = '/'.join([THUMBNAIL_DIR, videoId + 
-                    '.jpg'])
-            thumbnailContent = getHttpContent(entry['thumbnail'], useTor=useTor,
-                    circuitManager=circuitManager)
-            entry['thumbnail file'] = thumbnailFileName
-            open(thumbnailFileName, 'wb').write(thumbnailContent.content)
 
 # use this function to open a YouTube video url in mpv
 def openUrlInMpv(url, useTor=False, maxResolution=1080, circuitManager = None):
@@ -782,29 +767,30 @@ def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
     if os.path.isdir(THUMBNAIL_SEARCH_DIR):
         shutil.rmtree(THUMBNAIL_SEARCH_DIR)
 
+def getThumbnails(channelIdList, database, useTor=False, circuitManager = None):
+    feeds = database['feeds']
+    for channelId in channelIdList:
+        feed = feeds[channelId]
+        for entry in feed:
+            if 'thumbnail file' in entry:
+                continue
+            videoId = entry['id'].split(':')[-1]
+            thumbnailFileName = '/'.join([THUMBNAIL_DIR, videoId + 
+                    '.jpg'])
+            thumbnailContent = getHttpContent(entry['thumbnail'], useTor=useTor,
+                    circuitManager=circuitManager)
+            entry['thumbnail file'] = thumbnailFileName
+            open(thumbnailFileName, 'wb').write(thumbnailContent.content)
 
-def getSearchThumbnails(resultList, useTor = False):
+def getSearchThumbnails(resultList, useTor = False, circuitManager = None):
     for result in resultList:
-        command = []
-        if useTor:
-            command += ['torsocks','-i']
         videoId = result.videoId.split(':')[-1]
         thumbnailFileName = '/'.join([THUMBNAIL_SEARCH_DIR, videoId + 
                 '.jpg'])
-        command += ['wget', '-O', thumbnailFileName, result.thumbnail]
-        try:
-            downloadThumbnailProcess = subprocess.Popen(command, 
-                    stdout = subprocess.DEVNULL, stderr = subprocess.STDOUT)
-            result.thumbnail = thumbnailFileName
-            downloadThumbnailProcess.wait()
-            result = downloadThumbnailProcess.poll()
-        except KeyboardInterrupt:
-            downloadThumbnailProcess.kill()
-            downloadThumbnailProcess.wait()
-            result = -1
-        if result != 0:
-            raise FailedToGetThumbnail
-
+        thumbnailContent = getHttpContent(result.thumbnail, useTor=useTor,
+                circuitManager=circuitManager)
+        result.thumbnailFile = thumbnailFileName
+        open(thumbnailFileName, 'wb').write(thumbnailContent.content)
 
 # this is the application level flow entered when the user has chosen to subscribe to a
 # new channel
