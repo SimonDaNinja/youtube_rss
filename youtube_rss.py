@@ -63,6 +63,30 @@ ANY_INDEX = -1
 ###########
 
 """
+Thread classes
+"""
+
+class ErrorCatchingThread(threading.Thread):
+
+    def __init__(self, function, *args, **kwargs):
+        threading.Thread.__init__(self)
+        self.function=function
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self):
+        self.exc = None
+        try:
+            self.function(*self.args, **self.kwargs)
+        except Exception as exc:
+            self.exc = exc
+
+    def join(self):
+        threading.Thread.join(self)
+        if self.exc is not None:
+            raise self.exc
+
+"""
 Parser classes
 """
 
@@ -703,8 +727,8 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
     threads = []
     for channelId in channelIdList:
         localFeed = localFeeds[channelId]
-        thread = threading.Thread(target=refreshSubscriptionByChannelId, args=(channelId, localFeed), kwargs ={'useTor':useTor,
-                'circuitManager':circuitManager})
+        thread = ErrorCatchingThread(refreshSubscriptionByChannelId, channelId, localFeed, useTor=useTor,
+                circuitManager=circuitManager)
         threads.append(thread)
         thread.start()
     for thread in threads:
@@ -846,13 +870,13 @@ def getThumbnailsForAllSubscriptions(channelIdList, database, useTor=False, circ
         else:
             auth = None
         feed = feeds[channelId]
-        thread = threading.Thread(target=getThumbnailsForFeed, args=(feed))
+        thread = ErrorCatchingThread(getThumbnailsForFeed, feed, useTor=useTor, auth=auth)
         threads.append(thread)
         thread.start()
     for thread in threads:
         thread.join()
 
-def getThumbnailsForFeed(feed):
+def getThumbnailsForFeed(feed, useTor=False, auth = None):
     for entry in feed:
         if 'thumbnail file' in entry:
             continue
