@@ -25,6 +25,8 @@ import requests as req
 import re
 import feedparser
 import json
+from json import JSONEncoder
+from json import JSONDecoder
 import curses
 import socket
 try:
@@ -38,6 +40,7 @@ import os
 import sys
 import time
 import command_line_parser
+import threading
 
 #############
 # constants #
@@ -215,19 +218,54 @@ class CircuitManager:
         self.nCircuits = 15
         self.i = 0
         self.expiryTime = 0
+        self.__lock = threading.Lock()
 
     def initiateCircuitAuths(self):
         self.circuitAuths=[generateNewSocks5Auth() for i in range(self.nCircuits)]
 
     def getAuth(self):
         # if ttl is over, reinitiate circuit auth list
-        if self.expiryTime < time.time():
-            self.initiateCircuitAuths()
-            self.expiryTime = time.time() + self.ttl
-        # circulate over the various auths so that you don't use the same circuit all the
-        # time
-        self.i += 1
-        return self.circuitAuths[self.i%self.nCircuits]
+        with self.__lock:
+            if self.expiryTime < time.time():
+                self.initiateCircuitAuths()
+                self.expiryTime = time.time() + self.ttl
+            # circulate over the various auths so that you don't use the same circuit all the
+            # time
+            self.i += 1
+            return self.circuitAuths[self.i%self.nCircuits]
+
+class DatabaseEncoder(JSONEncoder):
+    def default(self, o):
+        return o.db
+
+class DatabaseDecoder(JSONDecoder):
+    def __init__(self, *args, **kwargs):
+        JSONDecoder.__init__(self, *args, **kwargs, object_hook = self.object_hook)
+
+    def object_hook(self, dct):
+        if type(dct) is dict or type(dct) is list:
+            return Database(dct)
+        return dct
+
+class Database:
+    def __init__(self, db):
+        self.db = db
+        self.__lock = threading.Lock()
+
+    def __repr__(self):
+        return repr(self.db)
+
+    def __getitem__(self, item):
+        with self.__lock:
+            return self.db[item]
+
+    def __setitem__(self, item, value):
+        with self.__lock:
+            self.db[item] = value
+
+    def __iter__(self):
+        return iter(self.db)
+
 
 # item of the sort provided in list to doMethodMenu; it is provided a description of an
 # option presented to the user, a function that will be executed if chosen by the user,
@@ -608,10 +646,10 @@ def getRssEntriesFromChannelId(channelId, useTor=False, circuitManager=None):
 
 # use this function to initialize the database (dict format so it's easy to save as json)
 def initiateYouTubeRssDatabase():
-    database = {}
-    database['feeds'] = {}
-    database['id to title'] = {}
-    database['title to id'] = {}
+    database = Database({})
+    database['feeds'] = Database({})
+    database['id to title'] = Database({})
+    database['title to id'] = Database({})
     return database
 
 # use this function to add a subscription to the database
@@ -728,21 +766,21 @@ Functions for managing database persistence between user sessions
 
 # use this function to read database from json string
 def parseDatabaseContent(content):
-    return json.loads(content)
+    return json.loads(content, cls = DatabaseDecoder)
 
 # use this function to read database from json file
 def parseDatabaseFile(filename):
     with open(filename, 'r') as filePointer:
-        return json.load(filePointer)
+        return json.load(filePointer, cls = DatabaseDecoder)
 
 # use this function to return json representation of database as string
 def getDatabaseString(database):
-    return json.dumps(database, indent=4)
+    return json.dumps(database, indent=4, cls=DatabaseEncoder)
 
 # use this function to write json representation of database to file
 def outputDatabaseToFile(database, filename):
     with open(filename, 'w') as filePointer:
-        return json.dump(database, filePointer, indent=4)
+        return json.dump(database, filePointer, indent=4, cls=DatabaseEncoder)
 
 """
 Application control flow
