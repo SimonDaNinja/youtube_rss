@@ -96,15 +96,6 @@ class ErrorCatchingThread(threading.Thread):
             if thread is self:
                 return id
             
-    def raiseException(self, exception = SystemExit):
-            thread_id = self.getThreadId()
-            res = ctypes.pythonapi.PyThreadState_SetAsynExc(thread_id, 
-                    ctypes.py_object(SystemExit))
-
-    def raiseExceptionLocked(self, lockable, exception = SystemExit):
-        with database.__lock:
-            self.raiseException(exception)
-
 """
 Parser classes
 """
@@ -750,14 +741,8 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
                 circuitManager=circuitManager)
         threads.append(thread)
         thread.start()
-    try:
-        for thread in threads:
-            thread.join()
-    except Exception as e:
-        for thread in threads:
-            thread.raiseExceptionLocked(database)
-            thread.join()
-        raise e
+    for thread in threads:
+        thread.join()
     if USE_THUMBNAILS:
         getThumbnailsForAllSubscriptions(channelIdList, database, useTor, circuitManager=circuitManager)
 
@@ -898,14 +883,8 @@ def getThumbnailsForAllSubscriptions(channelIdList, database, useTor=False, circ
         thread = ErrorCatchingThread(getThumbnailsForFeed, feed, useTor=useTor, auth=auth)
         threads.append(thread)
         thread.start()
-    try:
-        for thread in threads:
-            thread.join()
-    except Exception as e:
-        for thread in threads:
-            thread.raiseExceptionLocked(database)
-            thread.join()
-        raise e
+    for thread in threads:
+        thread.join()
 
 
 def getThumbnailsForFeed(feed, useTor=False, auth = None):
@@ -931,14 +910,8 @@ def getSearchThumbnails(resultList, useTor = False, circuitManager = None):
                 useTor=useTor, auth= auth)
         threads.append(thread)
         thread.start()
-    try:
-        for thread in threads:
-            thread.join()
-    except Exception as e:
-        for thread in threads:
-            thread.raiseException()
-            thread.join()
-        raise e
+    for thread in threads:
+        thread.join()
 
 def getSearchThumbnailFromSearchResult(result, useTor=False, auth=None):
     videoId = result.videoId.split(':')[-1]
