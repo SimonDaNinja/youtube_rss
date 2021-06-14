@@ -41,6 +41,7 @@ import sys
 import time
 import command_line_parser
 import threading
+import signal
 
 #############
 # constants #
@@ -1213,3 +1214,4 @@ if __name__ == '__main__':
         database = initiateYouTubeRssDatabase()
 
     doStartupMenu(database)
+    os.kill(os.getpid(), signal.SIGTERM)
