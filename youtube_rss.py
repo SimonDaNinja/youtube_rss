@@ -700,30 +700,41 @@ def removeSubscriptionFromDatabaseByChannelId(database, channelId):
 def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False, 
         circuitManager=None):
     localFeeds = database['feeds']
+    threads = []
     for channelId in channelIdList:
         localFeed = localFeeds[channelId]
-        remoteFeed = getRssEntriesFromChannelId(channelId, useTor=useTor, 
-                circuitManager=circuitManager)
-        if remoteFeed is not None:
-            remoteFeed.reverse()
-            for entry in remoteFeed:
-                filteredEntry = getRelevantDictFromFeedParserDict(entry)
-
-                filteredEntryIsNew = True
-                for i, localEntry in enumerate(localFeed):
-                    if localEntry['id'] == filteredEntry['id']:
-                        filteredEntryIsNew = False
-                        # in case any relevant data about the entry is changed, update it
-                        filteredEntry['seen'] = localEntry['seen']
-                        if filteredEntry['thumbnail'] == localEntry['thumbnail'] and \
-                                'thumbnail file' in filteredEntry:
-                            filteredEntry['thumbnail file'] = localEntry['thumbnail file']
-                        localFeed[i] = filteredEntry
-                        break
-                if filteredEntryIsNew:
-                    localFeed.insert(0, filteredEntry)
+        thread = threading.Thread(target=refreshSubscriptionByChannelId, args=(channelId, localFeed), kwargs ={'useTor':useTor,
+                'circuitManager':circuitManager})
+        threads.append(thread)
+        thread.start()
+    for thread in threads:
+        thread.join()
     if USE_THUMBNAILS:
-        getThumbnails(channelIdList, database, useTor, circuitManager=circuitManager)
+        getThumbnailsForAllSubscriptions(channelIdList, database, useTor, circuitManager=circuitManager)
+
+def refreshSubscriptionByChannelId(channelId, localFeed, useTor=False,
+        circuitManager=None):
+    remoteFeed = getRssEntriesFromChannelId(channelId, useTor=useTor, 
+            circuitManager=circuitManager)
+    if remoteFeed is not None:
+        remoteFeed.reverse()
+        for entry in remoteFeed:
+            filteredEntry = getRelevantDictFromFeedParserDict(entry)
+
+            filteredEntryIsNew = True
+            for i, localEntry in enumerate(localFeed):
+                if localEntry['id'] == filteredEntry['id']:
+                    filteredEntryIsNew = False
+                    # in case any relevant data about the entry is changed, update it
+                    filteredEntry['seen'] = localEntry['seen']
+                    if filteredEntry['thumbnail'] == localEntry['thumbnail'] and \
+                            'thumbnail file' in filteredEntry:
+                        filteredEntry['thumbnail file'] = localEntry['thumbnail file']
+                    localFeed[i] = filteredEntry
+                    break
+            if filteredEntryIsNew:
+                localFeed.insert(0, filteredEntry)
+
 
 # use this function to open a YouTube video url in mpv
 def openUrlInMpv(url, useTor=False, maxResolution=1080, circuitManager = None):
@@ -826,24 +837,32 @@ def doInteractiveSearchForVideo(database, useTor=False, circuitManager=None):
     if os.path.isdir(THUMBNAIL_SEARCH_DIR):
         shutil.rmtree(THUMBNAIL_SEARCH_DIR)
 
-def getThumbnails(channelIdList, database, useTor=False, circuitManager = None):
+def getThumbnailsForAllSubscriptions(channelIdList, database, useTor=False, circuitManager = None):
     feeds = database['feeds']
+    threads = []
     for channelId in channelIdList:
         if circuitManager is not None:
             auth = circuitManager.getAuth()
         else:
             auth = None
         feed = feeds[channelId]
-        for entry in feed:
-            if 'thumbnail file' in entry:
-                continue
-            videoId = entry['id'].split(':')[-1]
-            thumbnailFileName = '/'.join([THUMBNAIL_DIR, videoId + 
-                    '.jpg'])
-            thumbnailContent = getHttpContent(entry['thumbnail'], useTor=useTor,
-                    auth = auth)
-            entry['thumbnail file'] = thumbnailFileName
-            open(thumbnailFileName, 'wb').write(thumbnailContent.content)
+        thread = threading.Thread(target=getThumbnailsForFeed, args=(feed))
+        threads.append(thread)
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+def getThumbnailsForFeed(feed):
+    for entry in feed:
+        if 'thumbnail file' in entry:
+            continue
+        videoId = entry['id'].split(':')[-1]
+        thumbnailFileName = '/'.join([THUMBNAIL_DIR, videoId + 
+                '.jpg'])
+        thumbnailContent = getHttpContent(entry['thumbnail'], useTor=useTor,
+                auth = auth)
+        entry['thumbnail file'] = thumbnailFileName
+        open(thumbnailFileName, 'wb').write(thumbnailContent.content)
 
 def getSearchThumbnails(resultList, useTor = False, circuitManager = None):
     if circuitManager is not None:
