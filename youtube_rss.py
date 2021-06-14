@@ -79,6 +79,8 @@ class ErrorCatchingThread(threading.Thread):
         self.exc = None
         try:
             self.function(*self.args, **self.kwargs)
+        except SystemExit:
+            raise SystemExit
         except Exception as exc:
             self.exc = exc
 
@@ -86,6 +88,21 @@ class ErrorCatchingThread(threading.Thread):
         threading.Thread.join(self)
         if self.exc is not None:
             raise self.exc
+
+    def getThreadId(self):
+        if hasattr(self, '_thread_id'):
+            return self._thread_id
+        for id, thread in threading._active.items():
+            if thread is self:
+                return id
+            
+    def raiseException(self, database, exception = SystemExit):
+        with database.__lock:
+            thread_id = self.getThreadId()
+            res = ctypes.pythonapi.PyThreadState_SetAsynExc(thread_id, 
+                    ctypes.py_object(SystemExit))
+            if res > 1:
+                open(LOG_PATH, 'a').write('this is bad\n')
 
 """
 Parser classes
@@ -732,8 +749,14 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
                 circuitManager=circuitManager)
         threads.append(thread)
         thread.start()
-    for thread in threads:
-        thread.join()
+    try:
+        for thread in threads:
+            thread.join()
+    except Exception as e:
+        for thread in threads:
+            thread.raiseException(database)
+            thread.join()
+        raise e
     if USE_THUMBNAILS:
         getThumbnailsForAllSubscriptions(channelIdList, database, useTor, circuitManager=circuitManager)
 
