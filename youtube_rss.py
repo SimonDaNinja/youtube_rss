@@ -96,13 +96,14 @@ class ErrorCatchingThread(threading.Thread):
             if thread is self:
                 return id
             
-    def raiseException(self, database, exception = SystemExit):
-        with database.__lock:
+    def raiseException(self, exception = SystemExit):
             thread_id = self.getThreadId()
             res = ctypes.pythonapi.PyThreadState_SetAsynExc(thread_id, 
                     ctypes.py_object(SystemExit))
-            if res > 1:
-                open(LOG_PATH, 'a').write('this is bad\n')
+
+    def raiseExceptionLocked(self, lockable, exception = SystemExit):
+        with database.__lock:
+            self.raiseException(exception)
 
 """
 Parser classes
@@ -754,7 +755,7 @@ def refreshSubscriptionsByChannelId(channelIdList, database, useTor=False,
             thread.join()
     except Exception as e:
         for thread in threads:
-            thread.raiseException(database)
+            thread.raiseExceptionLocked(database)
             thread.join()
         raise e
     if USE_THUMBNAILS:
@@ -902,8 +903,9 @@ def getThumbnailsForAllSubscriptions(channelIdList, database, useTor=False, circ
             thread.join()
     except Exception as e:
         for thread in threads:
-            thread.raiseException(database)
+            thread.raiseExceptionLocked(database)
             thread.join()
+        raise e
 
 
 def getThumbnailsForFeed(feed, useTor=False, auth = None):
@@ -923,14 +925,29 @@ def getSearchThumbnails(resultList, useTor = False, circuitManager = None):
         auth = circuitManager.getAuth()
     else:
         auth = None
+    threads = []
     for result in resultList:
-        videoId = result.videoId.split(':')[-1]
-        thumbnailFileName = '/'.join([THUMBNAIL_SEARCH_DIR, videoId + 
-                '.jpg'])
-        thumbnailContent = getHttpContent(result.thumbnail, useTor=useTor,
-                auth = auth)
-        result.thumbnailFile = thumbnailFileName
-        open(thumbnailFileName, 'wb').write(thumbnailContent.content)
+        thread = ErrorCatchingThread(getSearchThumbnailFromSearchResult, result, 
+                useTor=useTor, auth= auth)
+        threads.append(thread)
+        thread.start()
+    try:
+        for thread in threads:
+            thread.join()
+    except Exception as e:
+        for thread in threads:
+            thread.raiseException()
+            thread.join()
+        raise e
+
+def getSearchThumbnailFromSearchResult(result, useTor=False, auth=None):
+    videoId = result.videoId.split(':')[-1]
+    thumbnailFileName = '/'.join([THUMBNAIL_SEARCH_DIR, videoId + 
+            '.jpg'])
+    thumbnailContent = getHttpContent(result.thumbnail, useTor=useTor,
+            auth = auth)
+    result.thumbnailFile = thumbnailFileName
+    open(thumbnailFileName, 'wb').write(thumbnailContent.content)
 
 # this is the application level flow entered when the user has chosen to subscribe to a
 # new channel
