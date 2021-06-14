@@ -897,8 +897,14 @@ def getThumbnailsForAllSubscriptions(channelIdList, database, useTor=False, circ
         thread = ErrorCatchingThread(getThumbnailsForFeed, feed, useTor=useTor, auth=auth)
         threads.append(thread)
         thread.start()
-    for thread in threads:
-        thread.join()
+    try:
+        for thread in threads:
+            thread.join()
+    except Exception as e:
+        for thread in threads:
+            thread.raiseException(database)
+            thread.join()
+
 
 def getThumbnailsForFeed(feed, useTor=False, auth = None):
     for entry in feed:
