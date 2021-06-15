@@ -42,6 +42,7 @@ import time
 import command_line_parser
 import threading
 import signal
+import urllib
 from multiprocessing import Process
 
 #############
@@ -469,7 +470,7 @@ def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery,
             elif key in [ord(digit) for digit in '1234567890']:
                 if len(jumpNumList) < 6:
                     jumpNumList.append(chr(key))
-            elif key == curses.KEY_BACKSPACE:
+            elif key in [curses.KEY_BACKSPACE, ord('\b'), ord('\x7f')]:
                 if jumpNumList:
                     jumpNumList.pop()
             elif key == ord('g'):
@@ -511,8 +512,6 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
     curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
     curses.curs_set(0)
-    validChars = [ord(letter) for letter in \
-            'qwertyuiopasdfghjklzxcvbnmåäöQWERTYUIOPASDFGHJKLZXCVBNMÅÄÖ1234567890 _+']
     curserPosition = 0
     userInputChars = []
     while True:
@@ -520,19 +519,24 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
             ' ' for i in range(maxInputLength)])], stdscr, 0,
                 xAlignment=maxInputLength//2, showItemNumber=False)
         key = stdscr.getch()
-        if key == curses.KEY_BACKSPACE:
+        if key in [curses.KEY_BACKSPACE, ord('\b'), ord('\x7f')]:
             deleteIndex = curserPosition-1
             if deleteIndex >= 0 : userInputChars.pop(curserPosition-1)
             curserPosition = max(0, curserPosition-1)
+        elif key in [curses.KEY_DC]:
+            deleteIndex = curserPosition+1
+            if deleteIndex <= len(userInputChars) : userInputChars.pop(curserPosition)
         elif key in [curses.KEY_ENTER, 10, 13]:
             return ''.join(userInputChars)
-        elif key in validChars and len(userInputChars) < maxInputLength:
-            userInputChars.insert(curserPosition,chr(key))
-            curserPosition = min(maxInputLength, curserPosition+1)
         elif key == curses.KEY_LEFT:
             curserPosition = max(0, curserPosition-1)
         elif key == curses.KEY_RIGHT:
             curserPosition = min(len(userInputChars), curserPosition+1)
+        elif key == curses.KEY_RESIZE:
+            pass
+        elif len(userInputChars) < maxInputLength:
+            userInputChars.insert(curserPosition,chr(key))
+            curserPosition = min(maxInputLength, curserPosition+1)
 
 # This function is used to visually represent a query and a number of menu items to the 
 # user, by using nCurses. It is used for all text printing in the program (even where
@@ -607,13 +611,6 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=
 Functions for retreiving and processing network data
 """
 
-# use this function to escape a YouTube query for the query URL
-# TODO: implement this function more properly
-def escapeQuery(query):
-    query = query.replace('+', '%2B')
-    query = query.replace(' ', '+')
-    return query
-
 # use this function to make HTTP requests without using Tor
 def unProxiedGetHttpContent(url, session=None, method = 'GET', postPayload = {}):
     if session is None:
@@ -654,7 +651,7 @@ def getRssAddressFromChannelId(channelId):
 # use this function to get a list of query results from searching for a channel
 # results are of the type ChannelQueryObject
 def getChannelQueryResults(query, useTor=False, circuitManager=None):
-    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
+    url = 'https://youtube.com/results?search_query=' + urllib.parse.quote(query) + \
             '&sp=EgIQAg%253D%253D'
     htmlContent = getHttpContent(url, useTor=useTor, circuitManager=circuitManager).text
     parser = ChannelQueryParser()
@@ -664,7 +661,7 @@ def getChannelQueryResults(query, useTor=False, circuitManager=None):
 # use this function to get a list of query results from searching for a video
 # results are of the type VideoQueryObject
 def getVideoQueryResults(query, useTor=False, circuitManager=None):
-    url = 'https://youtube.com/results?search_query=' + escapeQuery(query) + \
+    url = 'https://youtube.com/results?search_query=' + urllib.parse.quote(query) + \
             '&sp=EgIQAQ%253D%253D'
     htmlContent = getHttpContent(url, useTor=useTor, circuitManager=circuitManager).text
     parser = VideoQueryParser()
