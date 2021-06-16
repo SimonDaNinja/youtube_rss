@@ -43,7 +43,7 @@ import command_line_parser
 import threading
 import signal
 import urllib
-from multiprocessing import Process
+from multiprocessing import Process, ProcessError
 
 #############
 # constants #
@@ -680,7 +680,7 @@ def getVideoQueryResults(query, runtimeConstants, useTor=False, circuitManager=N
             process.kill()
             raise e
         if process.exitcode != 0:
-            raise multiprocessing.ProcessError
+            raise ProcessError
     return parser.resultList
 
 # use this function to get rss entries from channel id
@@ -757,7 +757,7 @@ def refreshSubscriptionsByChannelId(channelIdList, runtimeConstants, useTor=Fals
         process.kill
         raise e
     if process.exitcode != 0:
-        raise multiprocessing.ProcessError
+        raise ProcessError
 
 def refreshSubscriptionsByChannelIdProcess(channelIdList, runtimeConstants, useTor=False, 
         circuitManager=None):
@@ -896,7 +896,7 @@ def doInteractiveSearchForVideo(runtimeConstants, useTor=False, circuitManager=N
             else:
                 doNotify("no results found")
                 querying = False
-        except multiprocessing.ProcessError:
+        except ProcessError:
             if not doYesNoQuery("Something went wrong. Try again?"):
                 querying = False
     if os.path.isdir(THUMBNAIL_SEARCH_DIR):
@@ -1127,7 +1127,7 @@ def doRefreshSubscriptions(runtimeConstants ,useTor=False, circuitManager=None):
             doWaitScreen("refreshing subscriptions...", refreshSubscriptionsByChannelId,
                     channelIdList, runtimeConstants, useTor=useTor, circuitManager=circuitManager)
             refreshing = False
-        except multiprocessing.ProcessError:
+        except ProcessError:
             if not doYesNoQuery("Something went wrong. Try again?"):
                 refreshing = False
 
