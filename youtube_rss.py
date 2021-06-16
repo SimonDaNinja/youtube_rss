@@ -305,6 +305,9 @@ class Database:
     def __iter__(self):
         return iter(self.db)
 
+    def update(self, *args, **kwargs):
+        self.db.update(*args, **kwargs)
+
 
 # item of the sort provided in list to doMethodMenu; it is provided a description of an
 # option presented to the user, a function that will be executed if chosen by the user,
