@@ -660,7 +660,7 @@ def getChannelQueryResults(query, useTor=False, circuitManager=None):
 
 # use this function to get a list of query results from searching for a video
 # results are of the type VideoQueryObject
-def getVideoQueryResults(query, useTor=False, circuitManager=None):
+def getVideoQueryResults(query, runtimeConstants, useTor=False, circuitManager=None):
     url = 'https://youtube.com/results?search_query=' + urllib.parse.quote(query) + \
             '&sp=EgIQAQ%253D%253D'
     htmlContent = getHttpContent(url, useTor=useTor, circuitManager=circuitManager).text
@@ -670,14 +670,17 @@ def getVideoQueryResults(query, useTor=False, circuitManager=None):
         if os.path.isdir(THUMBNAIL_SEARCH_DIR):
             shutil.rmtree(THUMBNAIL_SEARCH_DIR)
         os.mkdir(THUMBNAIL_SEARCH_DIR)
-        process = Process(target=getSearchThumbnails, args=[parser.resultList], 
-                kwargs = {'useTor':useTor, 'circuitManager':circuitManager})
+        process = Process(target=getSearchThumbnails, args=[parser.resultList, 
+            runtimeConstants], 
+            kwargs = {'useTor':useTor, 'circuitManager':circuitManager})
         try:
             process.start()
             process.join()
         except Exception as e:
             process.kill()
             raise e
+        if process.exitcode != 0:
+            raise multiprocessing.ProcessError
     return parser.resultList
 
 # use this function to get rss entries from channel id
@@ -696,7 +699,7 @@ def initiateYouTubeRssDatabase():
     return database
 
 # use this function to add a subscription to the database
-def addSubscriptionToDatabase(channelId, channelTitle, refresh=False,
+def addSubscriptionToDatabase(channelId, runtimeConstants, channelTitle, refresh=False,
         useTor=False, circuitManager=None):
     database = parseDatabaseFile(DATABASE_PATH)
     database['feeds'][channelId] = []
@@ -704,8 +707,8 @@ def addSubscriptionToDatabase(channelId, channelTitle, refresh=False,
     database['title to id'][channelTitle] = channelId
     outputDatabaseToFile(database, DATABASE_PATH)
     if refresh:
-        refreshSubscriptionsByChannelId( [channelId], 
-                useTor=useTor, circuitManager=circuitManager)
+        refreshSubscriptionsByChannelId( [channelId], runtimeConstants, useTor=useTor, 
+                circuitManager=circuitManager)
 
 def deleteThumbnailsByChannelTitle(database, channelTitle):
     if channelTitle not in database['title to id']:
@@ -742,10 +745,10 @@ def removeSubscriptionFromDatabaseByChannelId(database, channelId):
 
 # use this function to retrieve new RSS entries for a subscription and add them to
 # a database
-def refreshSubscriptionsByChannelId(channelIdList, useTor=False, 
+def refreshSubscriptionsByChannelId(channelIdList, runtimeConstants, useTor=False, 
         circuitManager=None):
     process = Process(target = refreshSubscriptionsByChannelIdProcess, 
-            args = [channelIdList], 
+            args = [channelIdList, runtimeConstants], 
             kwargs = {'useTor':useTor, 'circuitManager':circuitManager})
     try:
         process.start()
@@ -753,8 +756,10 @@ def refreshSubscriptionsByChannelId(channelIdList, useTor=False,
     except Exception as e:
         process.kill
         raise e
+    if process.exitcode != 0:
+        raise multiprocessing.ProcessError
 
-def refreshSubscriptionsByChannelIdProcess(channelIdList, useTor=False, 
+def refreshSubscriptionsByChannelIdProcess(channelIdList, runtimeConstants, useTor=False, 
         circuitManager=None):
     database = parseDatabaseFile(DATABASE_PATH)
     localFeeds = database['feeds']
@@ -767,9 +772,9 @@ def refreshSubscriptionsByChannelIdProcess(channelIdList, useTor=False,
         thread.start()
     for thread in threads:
         thread.join()
-    if USE_THUMBNAILS:
+    if runtimeConstants['USE_THUMBNAILS']:
         getThumbnailsForAllSubscriptions(channelIdList, database, useTor, circuitManager=circuitManager)
-    outputDatabaseToFile(database, DATABASE_PATH)
+    outputDatabaseToFile(database, runtimeConstants['DATABASE_PATH'])
 
 def refreshSubscriptionByChannelId(channelId, localFeed, useTor=False,
         circuitManager=None):
@@ -864,16 +869,17 @@ def doMarkChannelAsRead(database, channelId):
             break
     for video in database['feeds'][channelId]:
         video['seen'] = not allAreAlreadyMarkedAsRead
+    outputDatabaseToFile(database, DATABASE_PATH)
 
 # this is the application level flow entered when the user has chosen to search for a
 # video
-def doInteractiveSearchForVideo(useTor=False, circuitManager=None):
+def doInteractiveSearchForVideo(runtimeConstants, useTor=False, circuitManager=None):
     query = doGetUserInput("Search for video: ")
     querying = True
     while querying:
         try:
             resultList = doWaitScreen("Getting video results...", getVideoQueryResults,
-                    query, useTor=useTor, circuitManager=circuitManager)
+                    query, runtimeConstants, useTor=useTor, circuitManager=circuitManager)
             if resultList:
                 menuOptions = [
                     MethodMenuDecision(
@@ -890,8 +896,8 @@ def doInteractiveSearchForVideo(useTor=False, circuitManager=None):
             else:
                 doNotify("no results found")
                 querying = False
-        except req.exceptions.ConnectionError:
-            if not doYesNoQuery("Something went wrong with the connection. Try again?"):
+        except multiprocessing.ProcessError:
+            if not doYesNoQuery("Something went wrong. Try again?"):
                 querying = False
     if os.path.isdir(THUMBNAIL_SEARCH_DIR):
         shutil.rmtree(THUMBNAIL_SEARCH_DIR)
@@ -924,7 +930,7 @@ def getThumbnailsForFeed(feed, useTor=False, auth = None):
         entry['thumbnail file'] = thumbnailFileName
         open(thumbnailFileName, 'wb').write(thumbnailContent.content)
 
-def getSearchThumbnails(resultList, useTor = False, circuitManager = None):
+def getSearchThumbnails(resultList, runtimeConstants, useTor = False, circuitManager = None):
     if circuitManager is not None:
         auth = circuitManager.getAuth()
     else:
@@ -932,15 +938,15 @@ def getSearchThumbnails(resultList, useTor = False, circuitManager = None):
     threads = []
     for result in resultList:
         thread = ErrorCatchingThread(getSearchThumbnailFromSearchResult, result, 
-                useTor=useTor, auth= auth)
+                runtimeConstants, useTor=useTor, auth= auth)
         threads.append(thread)
         thread.start()
     for thread in threads:
         thread.join()
 
-def getSearchThumbnailFromSearchResult(result, useTor=False, auth=None):
+def getSearchThumbnailFromSearchResult(result, runtimeConstants, useTor=False, auth=None):
     videoId = result.videoId.split(':')[-1]
-    thumbnailFileName = '/'.join([THUMBNAIL_SEARCH_DIR, videoId + 
+    thumbnailFileName = '/'.join([runtimeConstants['THUMBNAIL_SEARCH_DIR'], videoId +
             '.jpg'])
     thumbnailContent = getHttpContent(result.thumbnail, useTor=useTor,
             auth = auth)
@@ -949,7 +955,7 @@ def getSearchThumbnailFromSearchResult(result, useTor=False, auth=None):
 
 # this is the application level flow entered when the user has chosen to subscribe to a
 # new channel
-def doInteractiveChannelSubscribe(useTor=False, circuitManager=None):
+def doInteractiveChannelSubscribe(runtimeConstants, useTor=False, circuitManager=None):
     query = doGetUserInput("Enter channel to search for: ")
     querying = True
     while querying:
@@ -964,6 +970,7 @@ def doInteractiveChannelSubscribe(useTor=False, circuitManager=None):
                         doChannelSubscribe,
                         result,
                         useTor,
+                        runtimeConstants,
                         circuitManager
                     ) for result in resultList
                 ]
@@ -980,7 +987,7 @@ def doInteractiveChannelSubscribe(useTor=False, circuitManager=None):
 
 # this is the application level flow entered when the user has chosen a channel that it
 # wants to subscribe to
-def doChannelSubscribe(result, useTor, circuitManager):
+def doChannelSubscribe(result, useTor, circuitManager, runtimeConstants):
     database = doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
     refreshing = True
     if result.channelId in database['feeds']:
@@ -989,7 +996,7 @@ def doChannelSubscribe(result, useTor, circuitManager):
     while refreshing:
         try:
             doWaitScreen(f"getting data from feed for {result.title}...",
-                    addSubscriptionToDatabase, result.channelId,
+                    addSubscriptionToDatabase, result.channelId, runtimeConstants,
                     result.title, refresh=True, useTor=useTor,
                     circuitManager=circuitManager)
             refreshing = False
@@ -1111,39 +1118,42 @@ def playVideo(videoUrl, useTor=False, circuitManager = None):
 
 # this is the application level flow entered when the user has chosen to refresh its
 # subscriptions
-def doRefreshSubscriptions(useTor=False, circuitManager=None):
+def doRefreshSubscriptions(runtimeConstants ,useTor=False, circuitManager=None):
     database = doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
     channelIdList = list(database['id to title'])
     refreshing = True
     while refreshing:
         try:
             doWaitScreen("refreshing subscriptions...", refreshSubscriptionsByChannelId,
-                    channelIdList, useTor=useTor, circuitManager=circuitManager)
+                    channelIdList, runtimeConstants, useTor=useTor, circuitManager=circuitManager)
             refreshing = False
-        except req.exceptions.ConnectionError:
-            if not doYesNoQuery("Something went wrong with the connection. Try again?"):
+        except multiprocessing.ProcessError:
+            if not doYesNoQuery("Something went wrong. Try again?"):
                 refreshing = False
 
-def doStartupMenu():
+def doStartupMenu(runtimeConstants):
     menuOptions = [
         MethodMenuDecision(
             "Yes",
-            doStartupWithTor
+            doStartupWithTor,
+            runtimeConstants
         ), MethodMenuDecision(
             "No",
-            doMainMenu
+            doMainMenu,
+            runtimeConstants
         )
     ]
     doMethodMenu("Do you want to use tor?", menuOptions, showItemNumber=False)
 
-def doStartupWithTor():
+def doStartupWithTor(runtimeConstants):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         result = sock.connect_ex(('127.0.0.1',9050))
     if result != 0:
         menuOptions = [
             MethodMenuDecision(
                 "Yes",
-                doMainMenu
+                doMainMenu,
+                runtimeConstants
             ), MethodMenuDecision(
                 "No",
                 doNotifyAndReturnFromMenu,
@@ -1153,21 +1163,23 @@ def doStartupWithTor():
         doMethodMenu("Tor daemon not found on port 9050! " + \
                 "Continue without tor?", menuOptions, showItemNumber=False)
     else:
-        doMainMenu(useTor=True, circuitManager=CircuitManager())
+        doMainMenu(runtimeConstants, useTor=True, circuitManager=CircuitManager())
     return ReturnFromMenu
 
 
 
-def doMainMenu(useTor=False, circuitManager=None):
+def doMainMenu(runtimeConstants, useTor=False, circuitManager=None):
     menuOptions =   [
         MethodMenuDecision( 
             "Search for video",
             doInteractiveSearchForVideo,
+            runtimeConstants,
             useTor=useTor,
             circuitManager=circuitManager
         ), MethodMenuDecision( 
             "Refresh subscriptions",
             doRefreshSubscriptions,
+            runtimeConstants,
             useTor=useTor,
             circuitManager=circuitManager
         ), MethodMenuDecision( 
@@ -1178,6 +1190,7 @@ def doMainMenu(useTor=False, circuitManager=None):
         ), MethodMenuDecision( 
             "Subscribe to new channel",
             doInteractiveChannelSubscribe,
+            runtimeConstants,
             useTor=useTor,
             circuitManager=circuitManager
         ), MethodMenuDecision( 
@@ -1243,6 +1256,18 @@ if __name__ == '__main__':
         if not flag.treated:
             raise command_line_parser.CommandLineParseError
 
+    runtimeConstants = {
+            'USE_THUMBNAILS':USE_THUMBNAILS,
+            'HOME':HOME,
+            'YOUTUBE_RSS_DIR':YOUTUBE_RSS_DIR,
+            'THUMBNAIL_DIR':THUMBNAIL_DIR,
+            'THUMBNAIL_SEARCH_DIR':THUMBNAIL_SEARCH_DIR,
+            'DATABASE_PATH':DATABASE_PATH,
+            'LOG_PATH':LOG_PATH,
+            'HIGHLIGHTED':HIGHLIGHTED,
+            'NOT_HIGHLIGHTED':NOT_HIGHLIGHTED,
+            'ANY_INDEX':ANY_INDEX}
+
     if not os.path.isdir(YOUTUBE_RSS_DIR):
         os.mkdir(YOUTUBE_RSS_DIR)
     if not os.path.isdir(THUMBNAIL_DIR) and USE_THUMBNAILS:
@@ -1251,5 +1276,5 @@ if __name__ == '__main__':
         database = doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
         outputDatabaseToFile(database, DATABASE_PATH)
 
-    doStartupMenu()
+    doStartupMenu(runtimeConstants)
     os.kill(os.getpid(), signal.SIGTERM)
