@@ -1094,6 +1094,7 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager
             i+1
         ) for i, video in enumerate(videos)
     ]
+    outputDatabaseToFile(database, DATABASE_PATH)
     menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
     doMethodMenu("Which video do you want to watch?", menuOptions, adHocKeys=adHocKeys)
 
