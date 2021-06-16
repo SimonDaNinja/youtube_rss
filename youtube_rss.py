@@ -1081,6 +1081,7 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager
         MethodMenuDecision(
             FeedVideoDescriber(video),
             doPlayVideoFromSubscription,
+            database,
             video,
             useTor,
             circuitManager
@@ -1098,7 +1099,7 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager
 
 # this is the application level flow entered when the user has selected a video to watch
 # while browsing its current subscriptions
-def doPlayVideoFromSubscription(video, useTor, circuitManager):
+def doPlayVideoFromSubscription(database, video, useTor, circuitManager):
     result = playVideo(video['link'], useTor, circuitManager = circuitManager)
     if not video['seen']:
         video['seen'] = result
