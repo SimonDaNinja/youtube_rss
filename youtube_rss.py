@@ -1278,8 +1278,10 @@ if __name__ == '__main__':
     if not os.path.isdir(THUMBNAIL_DIR) and USE_THUMBNAILS:
         os.mkdir(THUMBNAIL_DIR)
     if not os.path.isfile(DATABASE_PATH):
+        database = initiateYouTubeRssDatabase()
+        doWaitScreen('', outputDatabaseToFile, database, DATABASE_PATH)
+    else:
         database = doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
-        outputDatabaseToFile(database, DATABASE_PATH)
 
     doStartupMenu(runtimeConstants)
     os.kill(os.getpid(), signal.SIGTERM)
