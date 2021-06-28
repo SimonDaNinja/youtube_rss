@@ -308,6 +308,9 @@ class Database:
     def update(self, *args, **kwargs):
         self.db.update(*args, **kwargs)
 
+    def pop(self, *args, **kwargs):
+        return self.db.pop(*args, **kwargs)
+
 
 # item of the sort provided in list to doMethodMenu; it is provided a description of an
 # option presented to the user, a function that will be executed if chosen by the user,
@@ -971,10 +974,10 @@ def doInteractiveChannelSubscribe(runtimeConstants, useTor=False, circuitManager
                     MethodMenuDecision(
                         str(result),
                         doChannelSubscribe,
-                        result,
-                        useTor,
-                        runtimeConstants,
-                        circuitManager
+                        result=result,
+                        useTor=useTor,
+                        circuitManager=circuitManager,
+                        runtimeConstants=runtimeConstants
                     ) for result in resultList
                 ]
                 menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
