@@ -1100,6 +1100,7 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager
     outputDatabaseToFile(database, DATABASE_PATH)
     menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
     doMethodMenu("Which video do you want to watch?", menuOptions, adHocKeys=adHocKeys)
+    outputDatabaseToFile(database, DATABASE_PATH)
 
 # this is the application level flow entered when the user has selected a video to watch
 # while browsing its current subscriptions
