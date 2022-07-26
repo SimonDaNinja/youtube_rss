@@ -832,8 +832,7 @@ def doInteractiveSearchForVideo(useThumbnails, useTor=False, circuitManager=None
                 doNotify("no results found")
                 querying = False
         except Exception as e:
-            raise e
-            if not doYesNoQuery(f"Something went wrong! Try again? ({e})"):
+            if not doYesNoQuery(f"Something went wrong! Try again?"):
                 querying = False
     if os.path.isdir(THUMBNAIL_SEARCH_DIR):
         shutil.rmtree(THUMBNAIL_SEARCH_DIR)
@@ -1072,7 +1071,6 @@ def doRefreshSubscriptions(useThumbnails ,useTor=False, circuitManager=None):
                     channelIdList, useThumbnails, useTor=useTor, auth=auth)
             refreshing = False
         except aiohttp.client_exceptions.ClientConnectionError:
-            raise e
             if not doYesNoQuery("Something went wrong. Try again?"):
                 refreshing = False
 
