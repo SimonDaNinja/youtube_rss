@@ -29,21 +29,18 @@ from json import JSONEncoder
 from json import JSONDecoder
 import curses
 import socket
-try:
-    from tor_requests.tor_requests import getHttpResponseUsingSocks5
-    from tor_requests.tor_requests import generateNewSocks5Auth
-except:
-    print("you probably haven't run the command\ngit submodule update --init --recursive")
-    exit()
-import subprocess
 import os
 import sys
 import time
 import command_line_parser
-import threading
-import signal
 import urllib
-from multiprocessing import Process, ProcessError
+import asyncio
+import aiohttp
+from aiohttp_socks import ProxyConnector
+from aiohttp_socks import ProxyType
+import inspect
+import subprocess
+import secrets
 
 #############
 # constants #
@@ -60,47 +57,12 @@ HIGHLIGHTED = 1
 NOT_HIGHLIGHTED = 2
 
 ANY_INDEX = -1
+MAX_CONNECTIONS=50
 
 ###########
 # classes #
 ###########
 
-"""
-Thread classes
-"""
-
-class ErrorCatchingThread(threading.Thread):
-
-    def __init__(self, function, *args, **kwargs):
-        threading.Thread.__init__(self)
-        self.function=function
-        self.args = args
-        self.kwargs = kwargs
-
-    def run(self):
-        self.exc = None
-        try:
-            self.function(*self.args, **self.kwargs)
-        except SystemExit:
-            raise SystemExit
-        except Exception as exc:
-            self.exc = exc
-
-    def join(self):
-        try:
-            threading.Thread.join(self)
-            if self.exc is not None:
-                raise self.exc
-        except KeyboardInterrupt:
-            os.kill(os.getpid(), signal.SIGTERM)
-
-    def getThreadId(self):
-        if hasattr(self, '_thread_id'):
-            return self._thread_id
-        for id, thread in threading._active.items():
-            if thread is self:
-                return id
-            
 """
 Parser classes
 """
@@ -257,60 +219,19 @@ class CircuitManager:
         self.nCircuits = 15
         self.i = 0
         self.expiryTime = 0
-        self.__lock = threading.Lock()
 
     def initiateCircuitAuths(self):
         self.circuitAuths=[generateNewSocks5Auth() for i in range(self.nCircuits)]
 
     def getAuth(self):
         # if ttl is over, reinitiate circuit auth list
-        with self.__lock:
-            if self.expiryTime < time.time():
-                self.initiateCircuitAuths()
-                self.expiryTime = time.time() + self.ttl
-            # circulate over the various auths so that you don't use the same circuit all the
-            # time
-            self.i += 1
-            return self.circuitAuths[self.i%self.nCircuits]
-
-class DatabaseEncoder(JSONEncoder):
-    def default(self, o):
-        return o.db
-
-class DatabaseDecoder(JSONDecoder):
-    def __init__(self, *args, **kwargs):
-        JSONDecoder.__init__(self, *args, **kwargs, object_hook = self.object_hook)
-
-    def object_hook(self, dct):
-        if type(dct) is dict or type(dct) is list:
-            return Database(dct)
-        return dct
-
-class Database:
-    def __init__(self, db):
-        self.db = db
-        self.__lock = threading.Lock()
-
-    def __repr__(self):
-        return repr(self.db)
-
-    def __getitem__(self, item):
-        with self.__lock:
-            return self.db[item]
-
-    def __setitem__(self, item, value):
-        with self.__lock:
-            self.db[item] = value
-
-    def __iter__(self):
-        return iter(self.db)
-
-    def update(self, *args, **kwargs):
-        self.db.update(*args, **kwargs)
-
-    def pop(self, *args, **kwargs):
-        return self.db.pop(*args, **kwargs)
-
+        if self.expiryTime < time.time():
+            self.initiateCircuitAuths()
+            self.expiryTime = time.time() + self.ttl
+        # circulate over the various auths so that you don't use the same circuit all the
+        # time
+        self.i += 1
+        return self.circuitAuths[self.i%self.nCircuits]
 
 # item of the sort provided in list to doMethodMenu; it is provided a description of an
 # option presented to the user, a function that will be executed if chosen by the user,
@@ -409,17 +330,20 @@ Presentation functions
 """
 
 # This function displays a message while the user waits for a function to execute
-def doWaitScreen(message, waitFunction, *args, **kwargs):
-    return curses.wrapper(doWaitScreenNcurses, message, waitFunction, *args, **kwargs)
+def doWaitScreen(message, cb, *args, **kwargs):
+    return curses.wrapper(doWaitScreenNcurses, message, cb, *args, **kwargs)
 
 # This function is where the Ncurses level of doWaitScreen starts.
 # It should never be called directly, but always through doWaitScreen!
-def doWaitScreenNcurses(stdscr, message, waitFunction, *args, **kwargs):
+def doWaitScreenNcurses(stdscr, message, cb, *args, **kwargs):
     curses.curs_set(0)
     curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(NOT_HIGHLIGHTED, curses.COLOR_WHITE, curses.COLOR_BLACK)
     printMenu(message, [], stdscr, 0, showItemNumber=False)
-    return waitFunction(*args, **kwargs)
+    if inspect.iscoroutinefunction(cb):
+        return asyncio.run(cb(*args, **kwargs))
+    else:
+        return cb(*args, **kwargs)
 
 # This Function gets a yes/no response to some query from the user
 def doYesNoQuery(query):
@@ -428,19 +352,19 @@ def doYesNoQuery(query):
 # This function is where the Ncurses level of doYesNoQuery starts.
 # It should never be called directly, but always through doYesNoQuery!
 def doYnQueryNcurses(stdscr, query):
-    return doSelectionQueryNcurses(stdscr, query, ['yes','no'], showItemNumber=False) \
+    return doSelectionQueryNcurses(stdscr, query, ['yes','no'], False, showItemNumber=False) \
             =='yes'
 
 # This function lets the user choose an object from a list
-def doSelectionQuery(query, options, queryStyle=ItemQuery, initialIndex=None,
+def doSelectionQuery(query, options, useThumbnails = False, queryStyle=ItemQuery, initialIndex=None,
         showItemNumber=True, adHocKeys=[]):
-    return curses.wrapper(doSelectionQueryNcurses, query, options, 
+    return curses.wrapper(doSelectionQueryNcurses, query, options, useThumbnails,
             queryStyle=queryStyle, initialIndex=initialIndex,
             showItemNumber=showItemNumber, adHocKeys=adHocKeys)
 
 # This function is where the Ncurses level of doSelectionQuery starts.
 # It should never be called directly, but always through doSelectionQuery!
-def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery, 
+def doSelectionQueryNcurses(stdscr, query, options, useThumbnails = False, queryStyle=ItemQuery, 
         initialIndex=None, showItemNumber=True, adHocKeys=[]):
     curses.curs_set(0)
     curses.init_pair(HIGHLIGHTED, curses.COLOR_BLACK, curses.COLOR_WHITE)
@@ -451,7 +375,7 @@ def doSelectionQueryNcurses(stdscr, query, options, queryStyle=ItemQuery,
     else:
         choiceIndex = 0
     while True:
-        with (ueberzug.Canvas() if USE_THUMBNAILS else NoCanvas()) as canvas:
+        with (ueberzug.Canvas() if useThumbnails else NoCanvas()) as canvas:
             printMenu(query, options, stdscr, choiceIndex, showItemNumber=showItemNumber,
                     jumpNumStr = ''.join(jumpNumList), canvas = canvas)
             key = stdscr.getch()
@@ -617,38 +541,44 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=
 Functions for retreiving and processing network data
 """
 
-# use this function to make HTTP requests without using Tor
-def unProxiedGetHttpContent(url, session=None, method = 'GET', postPayload = {}):
-    if session is None:
-        if method == 'GET':
-            return req.get(url)
-        elif method == 'POST':
-            return reg.post(url, postPayload)
-    else:
-        if method == 'GET':
-            return session.get(url)
-        elif method == 'POST':
-            return session.post(url, postPayload)
+# use this function to generate new socks5 authentication (for tor stream 
+# isolation)
+def generateNewSocks5Auth(userNameLen = 30, passwordLen = 30):
+    alphaNumeric = "QWERTYUIOPASDFGHJKLZXCVBNMqwertyuiopasdfghjklzxcvbnm1234567890"
+    username = "".join([rnd.choice(alphaNumeric) for i in range(userNameLen)])
+    password = "".join([rnd.choice(alphaNumeric) for i in range(passwordLen)])
+    return username, password
 
 # use this function to get content (typically hypertext or xml) using HTTP from YouTube
-def getHttpContent(url, useTor, circuitManager=None, auth=None):
-    session = req.Session()
-    session.headers['Accept-Language']='en-US'
-    # This cookie lets us avoid the YouTube consent page
-    session.cookies['CONSENT']='YES+'
+async def getHttpContent(url, useTor, semaphore, auth=None, contentType='text'):
     if useTor:
         if auth is not None:
-            socks5Username, socks5Password = auth
-            response = getHttpResponseUsingSocks5(url, session=session, 
-                    username=socks5Username, password=socks5Password)
+            username, password = auth
         else:
-            socks5Username, socks5Password = circuitManager.getAuth()
-            response = getHttpResponseUsingSocks5(url, session=session, 
-                    username=socks5Username, password=socks5Password)
+            username = None
+            password = None
+        connector = ProxyConnector(proxy_type=ProxyType.SOCKS5, host = "127.0.0.1", 
+                port = 9050, username=username, password = password, rdns = True)
     else:
-        response = unProxiedGetHttpContent(url, session=session)
+        connector = None
 
-    return response
+    # This cookie lets us avoid the YouTube consent page
+    cookies = {'CONSENT':'YES+'}
+    headers = {'Accept-Language':'en-US'}
+    await semaphore.acquire()
+    async with aiohttp.ClientSession(connector=connector, cookies = cookies) as session:
+        session.headers['Accept-Language']='en-US'
+        async with session.get(url, headers=headers) as response:
+            if contentType == 'text':
+                result = await response.text()
+            elif contentType == 'bytes':
+                result = await response.read()
+            else:
+                raise ValueError(f"unknown content type: {contentType}")
+    semaphore.release()
+    return result
+
+                #return await response.content()
 
 # if you have a channel id, you can use this function to get the rss address
 def getRssAddressFromChannelId(channelId):
@@ -656,65 +586,69 @@ def getRssAddressFromChannelId(channelId):
 
 # use this function to get a list of query results from searching for a channel
 # results are of the type ChannelQueryObject
-def getChannelQueryResults(query, useTor=False, circuitManager=None):
+async def getChannelQueryResults(query, useTor=False, auth=None):
     url = 'https://youtube.com/results?search_query=' + urllib.parse.quote(query) + \
             '&sp=EgIQAg%253D%253D'
-    htmlContent = getHttpContent(url, useTor=useTor, circuitManager=circuitManager).text
+    semaphore = asyncio.Semaphore(MAX_CONNECTIONS)
+    getTask = asyncio.create_task(getHttpContent(url, useTor=useTor, semaphore=semaphore,
+        auth=auth))
+    htmlContent = await getTask
     parser = ChannelQueryParser()
     parser.feed(htmlContent)
     return parser.resultList
 
 # use this function to get a list of query results from searching for a video
 # results are of the type VideoQueryObject
-def getVideoQueryResults(query, runtimeConstants, useTor=False, circuitManager=None):
+async def getVideoQueryResults(query, useThumbnails, useTor=False, auth=None):
     url = 'https://youtube.com/results?search_query=' + urllib.parse.quote(query) + \
             '&sp=EgIQAQ%253D%253D'
-    htmlContent = getHttpContent(url, useTor=useTor, circuitManager=circuitManager).text
+    semaphore = asyncio.Semaphore(MAX_CONNECTIONS)
+    getTask = asyncio.create_task(getHttpContent(url, semaphore=semaphore, useTor=useTor, 
+        auth=auth))
+    htmlContent = await getTask
     parser = VideoQueryParser()
     parser.feed(htmlContent)
-    if USE_THUMBNAILS:
+    if useThumbnails:
         if os.path.isdir(THUMBNAIL_SEARCH_DIR):
             shutil.rmtree(THUMBNAIL_SEARCH_DIR)
         os.mkdir(THUMBNAIL_SEARCH_DIR)
-        process = Process(target=getSearchThumbnails, args=[parser.resultList, 
-            runtimeConstants], 
-            kwargs = {'useTor':useTor, 'circuitManager':circuitManager})
-        try:
-            process.start()
-            process.join()
-        except Exception as e:
-            process.kill()
-            raise e
-        if process.exitcode != 0:
-            raise ProcessError
+        thumbnailTask = asyncio.create_task(getSearchThumbnails(parser.resultList,
+            useThumbnails, semaphore=semaphore, useTor=useTor, auth = auth))
+        await thumbnailTask
+
     return parser.resultList
 
 # use this function to get rss entries from channel id
-def getRssEntriesFromChannelId(channelId, useTor=False, circuitManager=None):
+async def getRssEntriesFromChannelId(channelId, semaphore, useTor=False, auth=None):
     rssAddress = getRssAddressFromChannelId(channelId)
-    rssContent = getHttpContent(rssAddress, useTor, circuitManager=circuitManager).text
+    getTask = asyncio.create_task(getHttpContent(rssAddress, useTor, semaphore=semaphore,
+        auth=auth))
+    rssContent = await getTask
     entries = feedparser.parse(rssContent)['entries']
     return entries
 
 # use this function to initialize the database (dict format so it's easy to save as json)
 def initiateYouTubeRssDatabase():
-    database = Database({})
-    database['feeds'] = Database({})
-    database['id to title'] = Database({})
-    database['title to id'] = Database({})
+    database = {}
+    database['feeds'] = {}
+    database['id to title'] = {}
+    database['title to id'] = {}
     return database
 
 # use this function to add a subscription to the database
-def addSubscriptionToDatabase(channelId, runtimeConstants, channelTitle, refresh=False,
+def addSubscriptionToDatabase(channelId, useThumbnails, channelTitle, refresh=False,
         useTor=False, circuitManager=None):
     database = parseDatabaseFile(DATABASE_PATH)
     database['feeds'][channelId] = []
     database['id to title'][channelId] = channelTitle
     database['title to id'][channelTitle] = channelId
     outputDatabaseToFile(database, DATABASE_PATH)
+    auth = None
+    if circuitManager is not None and useTor:
+        auth = circuitManager.getAuth()
     if refresh:
-        refreshSubscriptionsByChannelId( [channelId], runtimeConstants, useTor=useTor, 
-                circuitManager=circuitManager)
+        asyncio.run(refreshSubscriptionsByChannelId( [channelId], useThumbnails, useTor=useTor, 
+                auth=auth))
 
 def deleteThumbnailsByChannelTitle(database, channelTitle):
     if channelTitle not in database['title to id']:
@@ -751,41 +685,33 @@ def removeSubscriptionFromDatabaseByChannelId(database, channelId):
 
 # use this function to retrieve new RSS entries for a subscription and add them to
 # a database
-def refreshSubscriptionsByChannelId(channelIdList, runtimeConstants, useTor=False, 
-        circuitManager=None):
-    process = Process(target = refreshSubscriptionsByChannelIdProcess, 
-            args = [channelIdList, runtimeConstants], 
-            kwargs = {'useTor':useTor, 'circuitManager':circuitManager})
-    try:
-        process.start()
-        process.join()
-    except Exception as e:
-        process.kill
-        raise e
-    if process.exitcode != 0:
-        raise ProcessError
 
-def refreshSubscriptionsByChannelIdProcess(channelIdList, runtimeConstants, useTor=False, 
-        circuitManager=None):
+async def refreshSubscriptionsByChannelId(channelIdList, useThumbnails, useTor=False, 
+        auth=None):
     database = parseDatabaseFile(DATABASE_PATH)
     localFeeds = database['feeds']
-    threads = []
+    tasks = []
+
+    semaphore = asyncio.Semaphore(MAX_CONNECTIONS)
+
     for channelId in channelIdList:
         localFeed = localFeeds[channelId]
-        thread = ErrorCatchingThread(refreshSubscriptionByChannelId, channelId, localFeed, useTor=useTor,
-                circuitManager=circuitManager)
-        threads.append(thread)
-        thread.start()
-    for thread in threads:
-        thread.join()
-    if runtimeConstants['USE_THUMBNAILS']:
-        getThumbnailsForAllSubscriptions(channelIdList, database, useTor, circuitManager=circuitManager)
-    outputDatabaseToFile(database, runtimeConstants['DATABASE_PATH'])
+        tasks.append(asyncio.create_task(refreshSubscriptionByChannelId(channelId, localFeed, 
+            semaphore=semaphore, useTor=useTor, auth=auth)))
 
-def refreshSubscriptionByChannelId(channelId, localFeed, useTor=False,
-        circuitManager=None):
-    remoteFeed = getRssEntriesFromChannelId(channelId, useTor=useTor, 
-            circuitManager=circuitManager)
+    for task in tasks:
+        await task
+
+    if useThumbnails:
+        await asyncio.create_task(getThumbnailsForAllSubscriptions(channelIdList, 
+            database, semaphore=semaphore, useTor=useTor, auth=auth))
+    outputDatabaseToFile(database, DATABASE_PATH)
+
+async def refreshSubscriptionByChannelId(channelId, localFeed, semaphore, useTor=False,
+        auth=None):
+    task = asyncio.create_task(getRssEntriesFromChannelId(channelId, semaphore=semaphore, useTor=useTor, 
+            auth=auth))
+    remoteFeed = await task
     if remoteFeed is not None:
         remoteFeed.reverse()
         for entry in remoteFeed:
@@ -852,7 +778,7 @@ def parseDatabaseContent(content):
 # use this function to read database from json file
 def parseDatabaseFile(filename):
     with open(filename, 'r') as filePointer:
-        return json.load(filePointer, cls = DatabaseDecoder)
+        return json.load(filePointer)
 
 # use this function to return json representation of database as string
 def getDatabaseString(database):
@@ -861,7 +787,7 @@ def getDatabaseString(database):
 # use this function to write json representation of database to file
 def outputDatabaseToFile(database, filename):
     with open(filename, 'w') as filePointer:
-        return json.dump(database, filePointer, indent=4, cls=DatabaseEncoder)
+        return json.dump(database, filePointer, indent=4)
 
 """
 Application control flow
@@ -879,13 +805,16 @@ def doMarkChannelAsRead(database, channelId):
 
 # this is the application level flow entered when the user has chosen to search for a
 # video
-def doInteractiveSearchForVideo(runtimeConstants, useTor=False, circuitManager=None):
+def doInteractiveSearchForVideo(useThumbnails, useTor=False, circuitManager=None):
     query = doGetUserInput("Search for video: ")
     querying = True
     while querying:
         try:
+            auth = None
+            if useTor and circuitManager is not None:
+                auth = circuitManager.getAuth()
             resultList = doWaitScreen("Getting video results...", getVideoQueryResults,
-                    query, runtimeConstants, useTor=useTor, circuitManager=circuitManager)
+                    query, useThumbnails, useTor=useTor, auth=auth)
             if resultList:
                 menuOptions = [
                     MethodMenuDecision(
@@ -897,78 +826,79 @@ def doInteractiveSearchForVideo(runtimeConstants, useTor=False, circuitManager=N
                     ) for result in resultList
                 ]
                 menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
-                doMethodMenu(f"Search results for '{query}':",menuOptions)
+                doMethodMenu(f"Search results for '{query}':",menuOptions, useThumbnails=useThumbnails)
                 querying = False
             else:
                 doNotify("no results found")
                 querying = False
-        except ProcessError:
-            if not doYesNoQuery("Something went wrong. Try again?"):
+        except Exception as e:
+            raise e
+            if not doYesNoQuery(f"Something went wrong! Try again? ({e})"):
                 querying = False
     if os.path.isdir(THUMBNAIL_SEARCH_DIR):
         shutil.rmtree(THUMBNAIL_SEARCH_DIR)
 
-def getThumbnailsForAllSubscriptions(channelIdList, database, useTor=False, circuitManager = None):
+async def getThumbnailsForAllSubscriptions(channelIdList, database, semaphore, useTor=False, auth=None):
     feeds = database['feeds']
-    threads = []
+    tasks = []
     for channelId in channelIdList:
-        if circuitManager is not None:
-            auth = circuitManager.getAuth()
-        else:
-            auth = None
         feed = feeds[channelId]
-        thread = ErrorCatchingThread(getThumbnailsForFeed, feed, useTor=useTor, auth=auth)
-        threads.append(thread)
-        thread.start()
-    for thread in threads:
-        thread.join()
+        tasks.append(asyncio.create_task(getThumbnailsForFeed(feed, 
+            semaphore=semaphore, useTor=useTor, auth=auth)))
+    for task in tasks:
+        await task
 
 
-def getThumbnailsForFeed(feed, useTor=False, auth = None):
+async def getThumbnailsForFeed(feed, semaphore, useTor=False, auth = None):
+    getTasks = {}
+
     for entry in feed:
         if 'thumbnail file' in entry:
             continue
         videoId = entry['id'].split(':')[-1]
         thumbnailFileName = '/'.join([THUMBNAIL_DIR, videoId + 
                 '.jpg'])
-        thumbnailContent = getHttpContent(entry['thumbnail'], useTor=useTor,
-                auth = auth)
+        getTask = asyncio.create_task(getHttpContent(entry['thumbnail'], useTor=useTor,
+                semaphore=semaphore, auth = auth, contentType = 'bytes'))
+        getTasks[entry['id']] = (getTask, thumbnailFileName)
+
+    for entry in feed:
+        thumbnailContent = await getTasks[entry['id']][0]
+        thumbnailFileName = getTasks[entry['id']][1]
         entry['thumbnail file'] = thumbnailFileName
-        open(thumbnailFileName, 'wb').write(thumbnailContent.content)
+        open(thumbnailFileName, 'wb').write(thumbnailContent)
 
-def getSearchThumbnails(resultList, runtimeConstants, useTor = False, circuitManager = None):
-    if circuitManager is not None:
-        auth = circuitManager.getAuth()
-    else:
-        auth = None
-    threads = []
+async def getSearchThumbnails(resultList, useThumbnails, semaphore, useTor = False, auth=None):
+    tasks = []
     for result in resultList:
-        thread = ErrorCatchingThread(getSearchThumbnailFromSearchResult, result, 
-                runtimeConstants, useTor=useTor, auth= auth)
-        threads.append(thread)
-        thread.start()
-    for thread in threads:
-        thread.join()
+        tasks.append(asyncio.create_task(getSearchThumbnailFromSearchResult(result, 
+            useThumbnails, semaphore = semaphore, useTor=useTor, auth=auth)))
+    for task in tasks:
+        await task
 
-def getSearchThumbnailFromSearchResult(result, runtimeConstants, useTor=False, auth=None):
+async def getSearchThumbnailFromSearchResult(result, useThumbnails, semaphore, useTor=False, auth=None):
     videoId = result.videoId.split(':')[-1]
-    thumbnailFileName = '/'.join([runtimeConstants['THUMBNAIL_SEARCH_DIR'], videoId +
+    thumbnailFileName = '/'.join([THUMBNAIL_SEARCH_DIR, videoId +
             '.jpg'])
-    thumbnailContent = getHttpContent(result.thumbnail, useTor=useTor,
-            auth = auth)
+    getTask = asyncio.create_task(getHttpContent(result.thumbnail, semaphore=semaphore, useTor=useTor,
+            auth = auth, contentType='bytes'))
+    thumbnailContent = await getTask
     result.thumbnailFile = thumbnailFileName
-    open(thumbnailFileName, 'wb').write(thumbnailContent.content)
+    open(thumbnailFileName, 'wb').write(thumbnailContent)
 
 # this is the application level flow entered when the user has chosen to subscribe to a
 # new channel
-def doInteractiveChannelSubscribe(runtimeConstants, useTor=False, circuitManager=None):
+def doInteractiveChannelSubscribe(useThumbnails, useTor=False, circuitManager=None):
     query = doGetUserInput("Enter channel to search for: ")
     querying = True
     while querying:
         try:
+            auth = None
+            if useTor and circuitManager is not None:
+                auth = circuitManager.getAuth()
             resultList = doWaitScreen("Getting channel results...", 
                     getChannelQueryResults, query, useTor=useTor, 
-                    circuitManager=circuitManager)
+                    auth=auth)
             if resultList:
                 menuOptions = [
                     MethodMenuDecision(
@@ -977,7 +907,7 @@ def doInteractiveChannelSubscribe(runtimeConstants, useTor=False, circuitManager
                         result=result,
                         useTor=useTor,
                         circuitManager=circuitManager,
-                        runtimeConstants=runtimeConstants
+                        useThumbnails=useThumbnails
                     ) for result in resultList
                 ]
                 menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
@@ -993,7 +923,7 @@ def doInteractiveChannelSubscribe(runtimeConstants, useTor=False, circuitManager
 
 # this is the application level flow entered when the user has chosen a channel that it
 # wants to subscribe to
-def doChannelSubscribe(result, useTor, circuitManager, runtimeConstants):
+def doChannelSubscribe(result, useTor, circuitManager, useThumbnails):
     database = doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
     refreshing = True
     if result.channelId in database['feeds']:
@@ -1002,7 +932,7 @@ def doChannelSubscribe(result, useTor, circuitManager, runtimeConstants):
     while refreshing:
         try:
             doWaitScreen(f"getting data from feed for {result.title}...",
-                    addSubscriptionToDatabase, result.channelId, runtimeConstants,
+                    addSubscriptionToDatabase, result.channelId, useThumbnails,
                     result.title, refresh=True, useTor=useTor,
                     circuitManager=circuitManager)
             refreshing = False
@@ -1035,7 +965,7 @@ def doInteractiveChannelUnsubscribe():
 # wants to unsubscribe from
 def doChannelUnsubscribe(channelTitle):
     database = doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
-    if USE_THUMBNAILS:
+    if useThumbnails:
         deleteThumbnailsByChannelTitle(database, channelTitle)
     removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
     outputDatabaseToFile(database, DATABASE_PATH)
@@ -1043,7 +973,7 @@ def doChannelUnsubscribe(channelTitle):
 
 # this is the application level flow entered when the user has chosen to browse
 # its current subscriptions
-def doInteractiveBrowseSubscriptions(useTor, circuitManager):
+def doInteractiveBrowseSubscriptions(useTor, circuitManager, useThumbnails):
     database = doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
     menuOptions = [
         MethodMenuDecision(
@@ -1054,7 +984,8 @@ def doInteractiveBrowseSubscriptions(useTor, circuitManager):
             database,
             channelTitle,
             useTor,
-            circuitManager
+            circuitManager,
+            useThumbnails
         ) for channelTitle in database['title to id']
     ]
 
@@ -1077,7 +1008,7 @@ def doInteractiveBrowseSubscriptions(useTor, circuitManager):
 # this is the application level flow entered when the user has chosen a channel while
 # browsing its current subscriptions;
 # the user now gets to select a video from the channel to watch
-def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager):
+def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager, useThumbnails):
     channelId = database['title to id'][channelTitle]
     videos = database['feeds'][channelId]
     menuOptions = [
@@ -1099,7 +1030,8 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager
     ]
     outputDatabaseToFile(database, DATABASE_PATH)
     menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
-    doMethodMenu("Which video do you want to watch?", menuOptions, adHocKeys=adHocKeys)
+    doMethodMenu("Which video do you want to watch?", menuOptions, 
+            useThumbnails = useThumbnails, adHocKeys=adHocKeys)
     outputDatabaseToFile(database, DATABASE_PATH)
 
 # this is the application level flow entered when the user has selected a video to watch
@@ -1127,34 +1059,38 @@ def playVideo(videoUrl, useTor=False, circuitManager = None):
 
 # this is the application level flow entered when the user has chosen to refresh its
 # subscriptions
-def doRefreshSubscriptions(runtimeConstants ,useTor=False, circuitManager=None):
+def doRefreshSubscriptions(useThumbnails ,useTor=False, circuitManager=None):
     database = doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
     channelIdList = list(database['id to title'])
     refreshing = True
     while refreshing:
         try:
+            auth = None
+            if useTor and circuitManager is not None:
+                auth = circuitManager.getAuth()
             doWaitScreen("refreshing subscriptions...", refreshSubscriptionsByChannelId,
-                    channelIdList, runtimeConstants, useTor=useTor, circuitManager=circuitManager)
+                    channelIdList, useThumbnails, useTor=useTor, auth=auth)
             refreshing = False
-        except ProcessError:
+        except aiohttp.client_exceptions.ClientConnectionError:
+            raise e
             if not doYesNoQuery("Something went wrong. Try again?"):
                 refreshing = False
 
-def doStartupMenu(runtimeConstants):
+def doStartupMenu(useThumbnails):
     menuOptions = [
         MethodMenuDecision(
             "Yes",
             doStartupWithTor,
-            runtimeConstants
+            useThumbnails
         ), MethodMenuDecision(
             "No",
             doMainMenu,
-            runtimeConstants
+            useThumbnails
         )
     ]
     doMethodMenu("Do you want to use tor?", menuOptions, showItemNumber=False)
 
-def doStartupWithTor(runtimeConstants):
+def doStartupWithTor(useThumbnails):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         result = sock.connect_ex(('127.0.0.1',9050))
     if result != 0:
@@ -1162,7 +1098,7 @@ def doStartupWithTor(runtimeConstants):
             MethodMenuDecision(
                 "Yes",
                 doMainMenu,
-                runtimeConstants
+                useThumbnails
             ), MethodMenuDecision(
                 "No",
                 doNotifyAndReturnFromMenu,
@@ -1172,34 +1108,35 @@ def doStartupWithTor(runtimeConstants):
         doMethodMenu("Tor daemon not found on port 9050! " + \
                 "Continue without tor?", menuOptions, showItemNumber=False)
     else:
-        doMainMenu(runtimeConstants, useTor=True, circuitManager=CircuitManager())
+        doMainMenu(useThumbnails, useTor=True, circuitManager=CircuitManager())
     return ReturnFromMenu
 
 
 
-def doMainMenu(runtimeConstants, useTor=False, circuitManager=None):
+def doMainMenu(useThumbnails, useTor=False, circuitManager=None):
     menuOptions =   [
         MethodMenuDecision( 
             "Search for video",
             doInteractiveSearchForVideo,
-            runtimeConstants,
+            useThumbnails,
             useTor=useTor,
             circuitManager=circuitManager
         ), MethodMenuDecision( 
             "Refresh subscriptions",
             doRefreshSubscriptions,
-            runtimeConstants,
+            useThumbnails,
             useTor=useTor,
             circuitManager=circuitManager
         ), MethodMenuDecision( 
             "Browse subscriptions",
             doInteractiveBrowseSubscriptions,
             useTor = useTor,
-            circuitManager = circuitManager
+            circuitManager = circuitManager,
+            useThumbnails = useThumbnails
         ), MethodMenuDecision( 
             "Subscribe to new channel",
             doInteractiveChannelSubscribe,
-            runtimeConstants,
+            useThumbnails,
             useTor=useTor,
             circuitManager=circuitManager
         ), MethodMenuDecision( 
@@ -1216,11 +1153,12 @@ def doMainMenu(runtimeConstants, useTor=False, circuitManager=None):
 # this is a function for managing menu hierarchies; once called, a menu presents
 # application flows available to the user. If called from a flow selected in a previous
 # method menu, the menu becomes a new branch one step further from the root menu
-def doMethodMenu(query, menuOptions, showItemNumber = True, adHocKeys = []):
+def doMethodMenu(query, menuOptions, useThumbnails = False, showItemNumber = True, adHocKeys = []):
     index = 0
     try:
         while True:
             methodMenuDecision, index = doSelectionQuery(query, menuOptions, 
+                    useThumbnails = useThumbnails,
                     initialIndex=index, queryStyle=CombinedQuery,
                     showItemNumber=showItemNumber, adHocKeys=adHocKeys)
             try:
@@ -1248,16 +1186,17 @@ def doReturnFromMenu():
 ################
 
 if __name__ == '__main__':
+    rnd = secrets.SystemRandom()
     flags = command_line_parser.readFlags(sys.argv)
     for flag in flags:
         if flag not in command_line_parser.allowedFlags:
             raise command_line_parser.CommandLineParseError
 
-    USE_THUMBNAILS = False
+    useThumbnails = False
     if 'use-thumbnails' in flags:
         flag = flags[flags.index('use-thumbnails')]
         flag.treated = True
-        USE_THUMBNAILS = True
+        useThumbnails = True
         import shutil
         import ueberzug.lib.v0 as ueberzug
 
@@ -1265,21 +1204,9 @@ if __name__ == '__main__':
         if not flag.treated:
             raise command_line_parser.CommandLineParseError
 
-    runtimeConstants = {
-            'USE_THUMBNAILS':USE_THUMBNAILS,
-            'HOME':HOME,
-            'YOUTUBE_RSS_DIR':YOUTUBE_RSS_DIR,
-            'THUMBNAIL_DIR':THUMBNAIL_DIR,
-            'THUMBNAIL_SEARCH_DIR':THUMBNAIL_SEARCH_DIR,
-            'DATABASE_PATH':DATABASE_PATH,
-            'LOG_PATH':LOG_PATH,
-            'HIGHLIGHTED':HIGHLIGHTED,
-            'NOT_HIGHLIGHTED':NOT_HIGHLIGHTED,
-            'ANY_INDEX':ANY_INDEX}
-
     if not os.path.isdir(YOUTUBE_RSS_DIR):
         os.mkdir(YOUTUBE_RSS_DIR)
-    if not os.path.isdir(THUMBNAIL_DIR) and USE_THUMBNAILS:
+    if not os.path.isdir(THUMBNAIL_DIR) and useThumbnails:
         os.mkdir(THUMBNAIL_DIR)
     if not os.path.isfile(DATABASE_PATH):
         database = initiateYouTubeRssDatabase()
@@ -1287,5 +1214,4 @@ if __name__ == '__main__':
     else:
         database = doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
 
-    doStartupMenu(runtimeConstants)
-    os.kill(os.getpid(), signal.SIGTERM)
+    doStartupMenu(useThumbnails)
