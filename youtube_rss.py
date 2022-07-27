@@ -21,7 +21,6 @@
 #   Contact by email: simon@simonssoffa.xyz
 
 from html.parser import HTMLParser
-import requests as req
 import re
 import feedparser
 import json
@@ -918,8 +917,8 @@ def doInteractiveChannelSubscribe(useThumbnails, useTor=False, circuitManager=No
             else:
                 if not doYesNoQuery("No results found. Try again?"):
                     querying = False
-        except req.exceptions.ConnectionError:
-            if not doYesNoQuery("Something went wrong with the connection. Try again?"):
+        except Exception:
+            if not doYesNoQuery("Something went wrong. Try again?"):
                 querying = False
 
 # this is the application level flow entered when the user has chosen a channel that it
@@ -937,9 +936,8 @@ def doChannelSubscribe(result, useTor, circuitManager, useThumbnails):
                     result.title, refresh=True, useTor=useTor,
                     circuitManager=circuitManager)
             refreshing = False
-        except req.exceptions.ConnectionError:
-            if not doYesNoQuery("Something went wrong with the " + \
-                    "connection. Try again?"):
+        except Exception:
+            if not doYesNoQuery("Something went wrong. Try again?"):
                 doChannelUnsubscribe(result.title)
                 querying = False
                 refreshing = False

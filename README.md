@@ -17,6 +17,8 @@ a little bit of pain).
 
 The following python modules are used and may need to be installed, e.g. using pip:
 ```
+aiohttp
+aiohttp-socks
 feedparser
 urllib3
 pysocks
