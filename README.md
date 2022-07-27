@@ -21,7 +21,6 @@ aiohttp
 aiohttp-socks
 feedparser
 urllib3
-pysocks
 ```
 If you want to get thumbnails for videos, you will additionally need to install the
 module `ueberzug`, e.g. using pip.
