@@ -862,6 +862,8 @@ async def getThumbnailsForFeed(feed, semaphore, useTor=False, auth = None):
         getTasks[entry['id']] = (getTask, thumbnailFileName)
 
     for entry in feed:
+        if 'thumbnail file' in entry:
+            continue
         thumbnailContent = await getTasks[entry['id']][0]
         thumbnailFileName = getTasks[entry['id']][1]
         entry['thumbnail file'] = thumbnailFileName
