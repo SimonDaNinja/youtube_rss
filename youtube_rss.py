@@ -31,7 +31,6 @@ import socket
 import os
 import sys
 import time
-import command_line_parser
 import urllib
 import asyncio
 import aiohttp
@@ -40,6 +39,7 @@ from aiohttp_socks import ProxyType
 import inspect
 import subprocess
 import secrets
+import argparse
 
 #############
 # constants #
@@ -1184,23 +1184,18 @@ def doReturnFromMenu():
 ################
 
 if __name__ == '__main__':
-    rnd = secrets.SystemRandom()
-    flags = command_line_parser.readFlags(sys.argv)
-    for flag in flags:
-        if flag not in command_line_parser.allowedFlags:
-            raise command_line_parser.CommandLineParseError
 
-    useThumbnails = False
-    if 'use-thumbnails' in flags:
-        flag = flags[flags.index('use-thumbnails')]
-        flag.treated = True
-        useThumbnails = True
+    parser = argparse.ArgumentParser(description="A YouTube-client for managing subscriptions and watching videos anonymously over Tor without a Google account.")
+    parser.add_argument('--use-thumbnails', 
+            action='store_true')
+    args = parser.parse_args()
+
+
+    rnd = secrets.SystemRandom()
+    useThumbnails = args.use_thumbnails
+    if useThumbnails:
         import shutil
         import ueberzug.lib.v0 as ueberzug
-
-    for flag in flags:
-        if not flag.treated:
-            raise command_line_parser.CommandLineParseError
 
     if not os.path.isdir(YOUTUBE_RSS_DIR):
         os.mkdir(YOUTUBE_RSS_DIR)
