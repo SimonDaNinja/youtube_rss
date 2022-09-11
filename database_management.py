@@ -143,3 +143,18 @@ async def getThumbnailsForFeed(feed, semaphore, useTor=False, auth = None):
         thumbnailFileName = getTasks[entry['id']][1]
         entry['thumbnail file'] = thumbnailFileName
         open(thumbnailFileName, 'wb').write(thumbnailContent)
+
+# use this function to add a subscription to the database
+def addSubscriptionToDatabase(channelId, ueberzug, channelTitle, refresh=False,
+        useTor=False, circuitManager=None):
+    database = parseDatabaseFile(constants.DATABASE_PATH)
+    database['feeds'][channelId] = []
+    database['id to title'][channelId] = channelTitle
+    database['title to id'][channelTitle] = channelId
+    outputDatabaseToFile(database, constants.DATABASE_PATH)
+    auth = None
+    if circuitManager is not None and useTor:
+        auth = circuitManager.getAuth()
+    if refresh:
+        asyncio.run(refreshSubscriptionsByChannelId( [channelId], ueberzug, useTor=useTor, 
+                auth=auth))

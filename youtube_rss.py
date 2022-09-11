@@ -133,28 +133,6 @@ class MarkEntryAsReadKey(AdHocKey):
 #############
 
 """
-Functions for managing database persistence between user sessions
-"""
-
-# use this function to add a subscription to the database
-def addSubscriptionToDatabase(channelId, ueberzug, channelTitle, refresh=False,
-        useTor=False, circuitManager=None):
-    database = database_management.parseDatabaseFile(constants.DATABASE_PATH)
-    database['feeds'][channelId] = []
-    database['id to title'][channelId] = channelTitle
-    database['title to id'][channelTitle] = channelId
-    database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
-    auth = None
-    if circuitManager is not None and useTor:
-        auth = circuitManager.getAuth()
-    if refresh:
-        asyncio.run(database_management.refreshSubscriptionsByChannelId( [channelId], ueberzug, useTor=useTor, 
-                auth=auth))
-
-
-
-
-"""
 Application control flow
 """
 
