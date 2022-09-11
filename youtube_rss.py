@@ -22,7 +22,6 @@
 
 import socket
 import os
-import asyncio
 import aiohttp
 import argparse
 import presentation
@@ -31,106 +30,27 @@ import constants
 import connection_management
 import shutil
 import database_management
+import method_menu
 
-###########
-# classes #
-###########
-
-"""
-Other classes
-"""
-
-# item of the sort provided in list to doMethodMenu; it is provided a description of an
-# option presented to the user, a function that will be executed if chosen by the user,
-# and all arguments that the function needs
-class MethodMenuDecision:
-    def __init__(self, description, function, *args, **kwargs):
-        self.function = function
-        self.args = args
-        self.kwargs = kwargs
-        self.description = description
-
-    def __str__(self):
-        return str(self.description)
-
-    def executeDecision(self):
-        return self.function(*self.args, **self.kwargs)
-
-class FeedVideoDescriber:
-    def __init__(self, video):
-        self.video = video
-
-    def __str__(self):
-        return self.video['title'] + (' (unseen!)' if not self.video['seen'] else '')
-
-    def getThumbnail(self):
-        return self.video['thumbnail file']
-
-class VideoQueryObjectDescriber:
-    def __init__(self, videoQueryObject):
-        self.videoQueryObject = videoQueryObject
-
-    def __str__(self):
-        return self.videoQueryObject.title
-
-    def getThumbnail(self):
-        return '/'.join([constants.THUMBNAIL_SEARCH_DIR, 
-            self.videoQueryObject.videoId + '.jpg'])
-
-class FeedDescriber:
-    def __init__(self, feed, channelTitle):
-        self.feed = feed
-        self.channelTitle = channelTitle
-
-    def __str__(self):
-        return ''.join([self.channelTitle, ': (', str(sum([1 for video in self.feed
-            if not video['seen']])),'/',str(len(self.feed)), ')'])
-
-class AdHocKey:
-    def __init__(self, key, item, activationIndex = constants.ANY_INDEX):
-        self.key = key
-        self.item = item
-        self.activationIndex = activationIndex
-
-    def isValidIndex(self, index):
-        if self.activationIndex == constants.ANY_INDEX:
-            return True
-        else:
-            return index == self.activationIndex
-
-    def __eq__(self,other):
-        if isinstance(other, int):
-            return other == self.key
-        if isinstance(other, chr):
-            return other == chr(self.key)
-        if isinstance(other, AdHocKey):
-            return other.key == self.key and other.item == self.item and \
-                    other.activationIndex == self.activationIndex
-        else:
-            raise TypeError
-
-class MarkAllAsReadKey(AdHocKey):
+class MarkAllAsReadKey(method_menu.AdHocKey):
     def __init__(self, channelId, activationIndex, database, key=ord('a')):
-        item =  MethodMenuDecision(
+        item =  method_menu.MethodMenuDecision(
                     f"mark all by {channelId} as read",
                     doMarkChannelAsRead,
                     database,
                     channelId
                 )
-        AdHocKey.__init__(self, key=key, item=item, activationIndex=activationIndex)
+        method_menu.AdHocKey.__init__(self, key=key, item=item, activationIndex=activationIndex)
 
-class MarkEntryAsReadKey(AdHocKey):
+class MarkEntryAsReadKey(method_menu.AdHocKey):
     def __init__(self, video, activationIndex, key=ord('a')):
-        item =  MethodMenuDecision(
+        item =  method_menu.MethodMenuDecision(
                     "mark video as read",
                     lambda video : video.update({'seen':(not video['seen'])}),
                     video
                 )
-        AdHocKey.__init__(self, key=key, item=item, activationIndex=activationIndex)
+        method_menu.AdHocKey.__init__(self, key=key, item=item, activationIndex=activationIndex)
 
-#############
-# functions #
-#############
 
 """
 Application control flow
@@ -161,16 +81,16 @@ def doInteractiveSearchForVideo(ueberzug, useTor=False, circuitManager=None):
                     useTor=useTor, auth=auth)
             if resultList:
                 menuOptions = [
-                    MethodMenuDecision(
-                        VideoQueryObjectDescriber(result),
+                    method_menu.MethodMenuDecision(
+                        method_menu.VideoQueryObjectDescriber(result),
                         playVideo,
                         result.url,
                         useTor=useTor,
                         circuitManager=circuitManager
                     ) for result in resultList
                 ]
-                menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
-                doMethodMenu(f"Search results for '{query}':",menuOptions, ueberzug=ueberzug)
+                menuOptions.insert(0, method_menu.MethodMenuDecision("[Go back]", method_menu.doReturnFromMenu))
+                method_menu.doMethodMenu(f"Search results for '{query}':",menuOptions, ueberzug=ueberzug)
                 querying = False
             else:
                 presentation.doNotify("no results found")
@@ -197,7 +117,7 @@ def doInteractiveChannelSubscribe(ueberzug, useTor=False, circuitManager=None):
                     auth=auth)
             if resultList:
                 menuOptions = [
-                    MethodMenuDecision(
+                    method_menu.MethodMenuDecision(
                         str(result),
                         doChannelSubscribe,
                         result=result,
@@ -206,8 +126,8 @@ def doInteractiveChannelSubscribe(ueberzug, useTor=False, circuitManager=None):
                         ueberzug=ueberzug
                     ) for result in resultList
                 ]
-                menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
-                doMethodMenu(f"search results for '{query}', choose which " + \
+                menuOptions.insert(0, method_menu.MethodMenuDecision('[Go back]', method_menu.doReturnFromMenu))
+                method_menu.doMethodMenu(f"search results for '{query}', choose which " + \
                         "channel to supscribe to", menuOptions)
                 querying = False
             else:
@@ -228,7 +148,7 @@ def doChannelSubscribe(result, useTor, circuitManager, ueberzug):
     while refreshing:
         try:
             presentation.doWaitScreen(f"getting data from feed for {result.title}...",
-                    addSubscriptionToDatabase, result.channelId, ueberzug,
+                    method_menu.addSubscriptionToDatabase, result.channelId, ueberzug,
                     result.title, refresh=True, useTor=useTor,
                     circuitManager=circuitManager)
             refreshing = False
@@ -247,14 +167,14 @@ def doInteractiveChannelUnsubscribe():
         presentation.doNotify('You are not subscribed to any channels')
         return
     menuOptions = [
-        MethodMenuDecision(
+        method_menu.MethodMenuDecision(
             channelTitle,
             doChannelUnsubscribe,
             channelTitle
         ) for channelTitle in database['title to id']
     ]
-    menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
-    doMethodMenu("Which channel do you want to unsubscribe from?", menuOptions)
+    menuOptions.insert(0, method_menu.MethodMenuDecision('[Go back]', method_menu.doReturnFromMenu))
+    method_menu.doMethodMenu("Which channel do you want to unsubscribe from?", menuOptions)
 
 # this is the application level flow entered when the user has chosen a channel that it
 # wants to unsubscribe from
@@ -271,8 +191,8 @@ def doChannelUnsubscribe(channelTitle):
 def doInteractiveBrowseSubscriptions(useTor, circuitManager, ueberzug):
     database = presentation.doWaitScreen('', database_management.parseDatabaseFile, constants.DATABASE_PATH)
     menuOptions = [
-        MethodMenuDecision(
-            FeedDescriber(
+        method_menu.MethodMenuDecision(
+            method_menu.FeedDescriber(
                 database['feeds'][database['title to id'][channelTitle]],
                 channelTitle
             ), doSelectVideoFromSubscription,
@@ -296,8 +216,8 @@ def doInteractiveBrowseSubscriptions(useTor, circuitManager, ueberzug):
         presentation.doNotify('You are not subscribed to any channels')
         return
 
-    menuOptions.insert(0, MethodMenuDecision('[Go back]', doReturnFromMenu))
-    doMethodMenu("Which channel do you want to watch a video from?", menuOptions,
+    menuOptions.insert(0, method_menu.MethodMenuDecision('[Go back]', method_menu.doReturnFromMenu))
+    method_menu.doMethodMenu("Which channel do you want to watch a video from?", menuOptions,
             adHocKeys = adHocKeys)
 
 # this is the application level flow entered when the user has chosen a channel while
@@ -307,8 +227,8 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager
     channelId = database['title to id'][channelTitle]
     videos = database['feeds'][channelId]
     menuOptions = [
-        MethodMenuDecision(
-            FeedVideoDescriber(video),
+        method_menu.MethodMenuDecision(
+            method_menu.FeedVideoDescriber(video),
             doPlayVideoFromSubscription,
             database,
             video,
@@ -324,8 +244,8 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager
         ) for i, video in enumerate(videos)
     ]
     database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
-    menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
-    doMethodMenu("Which video do you want to watch?", menuOptions, 
+    menuOptions.insert(0, method_menu.MethodMenuDecision("[Go back]", method_menu.doReturnFromMenu))
+    method_menu.doMethodMenu("Which video do you want to watch?", menuOptions, 
             ueberzug = ueberzug, adHocKeys=adHocKeys)
     database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
 
@@ -374,34 +294,34 @@ def doRefreshSubscriptions(ueberzug ,useTor=False, circuitManager=None):
 
 def doStartupMenu(ueberzug):
     menuOptions = [
-        MethodMenuDecision(
+        method_menu.MethodMenuDecision(
             "Yes",
             doStartupWithTor,
             ueberzug
-        ), MethodMenuDecision(
+        ), method_menu.MethodMenuDecision(
             "No",
             doMainMenu,
             ueberzug
         )
     ]
-    doMethodMenu("Do you want to use tor?", menuOptions, showItemNumber=False)
+    method_menu.doMethodMenu("Do you want to use tor?", menuOptions, showItemNumber=False)
 
 def doStartupWithTor(ueberzug):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         result = sock.connect_ex(('127.0.0.1',9050))
     if result != 0:
         menuOptions = [
-            MethodMenuDecision(
+            method_menu.MethodMenuDecision(
                 "Yes",
                 doMainMenu,
                 ueberzug
-            ), MethodMenuDecision(
+            ), method_menu.MethodMenuDecision(
                 "No",
-                doNotifyAndReturnFromMenu,
+                method_menu.doNotifyAndReturnFromMenu,
                 "Can't find Tor daemon. Exiting program."
             )
         ]
-        doMethodMenu("Tor daemon not found on port 9050! " + \
+        method_menu.doMethodMenu("Tor daemon not found on port 9050! " + \
                 "Continue without tor?", menuOptions, showItemNumber=False)
     else:
         doMainMenu(ueberzug, useTor=True, circuitManager=connection_management.CircuitManager())
@@ -411,71 +331,40 @@ def doStartupWithTor(ueberzug):
 
 def doMainMenu(ueberzug, useTor=False, circuitManager=None):
     menuOptions =   [
-        MethodMenuDecision( 
+        method_menu.MethodMenuDecision( 
             "Search for video",
             doInteractiveSearchForVideo,
             ueberzug,
             useTor=useTor,
             circuitManager=circuitManager
-        ), MethodMenuDecision( 
+        ), method_menu.MethodMenuDecision( 
             "Refresh subscriptions",
             doRefreshSubscriptions,
             ueberzug,
             useTor=useTor,
             circuitManager=circuitManager
-        ), MethodMenuDecision( 
+        ), method_menu.MethodMenuDecision( 
             "Browse subscriptions",
             doInteractiveBrowseSubscriptions,
             useTor = useTor,
             circuitManager = circuitManager,
             ueberzug = ueberzug
-        ), MethodMenuDecision( 
+        ), method_menu.MethodMenuDecision( 
             "Subscribe to new channel",
             doInteractiveChannelSubscribe,
             ueberzug,
             useTor=useTor,
             circuitManager=circuitManager
-        ), MethodMenuDecision( 
+        ), method_menu.MethodMenuDecision( 
             "Unsubscribe from channel",
             doInteractiveChannelUnsubscribe,
-        ), MethodMenuDecision(
+        ), method_menu.MethodMenuDecision(
             "Quit",
-            doReturnFromMenu
+            method_menu.doReturnFromMenu
         )
     ]
-    doMethodMenu("What do you want to do?", menuOptions)
+    method_menu.doMethodMenu("What do you want to do?", menuOptions)
     return indicator_classes.ReturnFromMenu
-
-# this is a function for managing menu hierarchies; once called, a menu presents
-# application flows available to the user. If called from a flow selected in a previous
-# method menu, the menu becomes a new branch one step further from the root menu
-def doMethodMenu(query, menuOptions, ueberzug = None, showItemNumber = True, adHocKeys = []):
-    index = 0
-    try:
-        while True:
-            methodMenuDecision, index = presentation.doSelectionQuery(query, menuOptions, 
-                    ueberzug = ueberzug,
-                    initialIndex=index, queryStyle=indicator_classes.CombinedQuery,
-                    showItemNumber=showItemNumber, adHocKeys=adHocKeys)
-            try:
-                result = methodMenuDecision.executeDecision()
-            except KeyboardInterrupt:
-                result = None
-                pass
-            if result is indicator_classes.ReturnFromMenu:
-                return
-    except KeyboardInterrupt:
-        return
-
-def doNotifyAndReturnFromMenu(message):
-    presentation.doNotify(message)
-    return indicator_classes.ReturnFromMenu
-
-# this function is an application level flow which when selected from a method menu simply
-# returns to the preceding menu (one step closer to the root menu)
-def doReturnFromMenu():
-    return indicator_classes.ReturnFromMenu
-
 
 ################
 # main section #
