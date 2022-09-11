@@ -20,37 +20,17 @@
 
 #   Contact by email: simon@simonssoffa.xyz
 
-from tkinter import W
-import feedparser
-import json
 import socket
 import os
-import time
-import urllib
 import asyncio
 import aiohttp
-from aiohttp_socks import ProxyConnector
-from aiohttp_socks import ProxyType
-import subprocess
-import secrets
 import argparse
 import presentation
 import indicator_classes
-import parser_classes
-
-#############
-# constants #
-#############
-
-HOME = os.environ.get('HOME')
-YOUTUBE_RSS_DIR = '/'.join([HOME,'.youtube_rss'])
-THUMBNAIL_DIR = '/'.join([YOUTUBE_RSS_DIR, 'thumbnails'])
-THUMBNAIL_SEARCH_DIR = '/'.join([THUMBNAIL_DIR, 'search'])
-DATABASE_PATH  = '/'.join([YOUTUBE_RSS_DIR, 'database'])
-LOG_PATH = '/'.join([YOUTUBE_RSS_DIR, 'log'])
-
-ANY_INDEX = -1
-MAX_CONNECTIONS=30
+import constants
+import connection_management
+import shutil
+import database_management
 
 ###########
 # classes #
@@ -59,27 +39,6 @@ MAX_CONNECTIONS=30
 """
 Other classes
 """
-
-# manages socks5 auths used for Tor stream isolation
-class CircuitManager:
-    def __init__(self, nCircuits = 15, ttl = 600):
-        self.ttl = ttl
-        self.nCircuits = 15
-        self.i = 0
-        self.expiryTime = 0
-
-    def initiateCircuitAuths(self):
-        self.circuitAuths=[generateNewSocks5Auth() for i in range(self.nCircuits)]
-
-    def getAuth(self):
-        # if ttl is over, reinitiate circuit auth list
-        if self.expiryTime < time.time():
-            self.initiateCircuitAuths()
-            self.expiryTime = time.time() + self.ttl
-        # circulate over the various auths so that you don't use the same circuit all the
-        # time
-        self.i += 1
-        return self.circuitAuths[self.i%self.nCircuits]
 
 # item of the sort provided in list to doMethodMenu; it is provided a description of an
 # option presented to the user, a function that will be executed if chosen by the user,
@@ -115,7 +74,7 @@ class VideoQueryObjectDescriber:
         return self.videoQueryObject.title
 
     def getThumbnail(self):
-        return '/'.join([THUMBNAIL_SEARCH_DIR, 
+        return '/'.join([constants.THUMBNAIL_SEARCH_DIR, 
             self.videoQueryObject.videoId + '.jpg'])
 
 class FeedDescriber:
@@ -128,13 +87,13 @@ class FeedDescriber:
             if not video['seen']])),'/',str(len(self.feed)), ')'])
 
 class AdHocKey:
-    def __init__(self, key, item, activationIndex = ANY_INDEX):
+    def __init__(self, key, item, activationIndex = constants.ANY_INDEX):
         self.key = key
         self.item = item
         self.activationIndex = activationIndex
 
     def isValidIndex(self, index):
-        if self.activationIndex == ANY_INDEX:
+        if self.activationIndex == constants.ANY_INDEX:
             return True
         else:
             return index == self.activationIndex
@@ -174,254 +133,26 @@ class MarkEntryAsReadKey(AdHocKey):
 #############
 
 """
-Functions for retreiving and processing network data
+Functions for managing database persistence between user sessions
 """
-
-# use this function to generate new socks5 authentication (for tor stream 
-# isolation)
-def generateNewSocks5Auth(userNameLen = 30, passwordLen = 30):
-    alphaNumeric = "QWERTYUIOPASDFGHJKLZXCVBNMqwertyuiopasdfghjklzxcvbnm1234567890"
-    username = "".join([rnd.choice(alphaNumeric) for i in range(userNameLen)])
-    password = "".join([rnd.choice(alphaNumeric) for i in range(passwordLen)])
-    return username, password
-
-# use this function to get content (typically hypertext or xml) using HTTP from YouTube
-async def getHttpContent(url, useTor, semaphore, auth=None, contentType='text'):
-    if useTor:
-        if auth is not None:
-            username, password = auth
-        else:
-            username = None
-            password = None
-        connector = ProxyConnector(proxy_type=ProxyType.SOCKS5, host = "127.0.0.1", 
-                port = 9050, username=username, password = password, rdns = True)
-    else:
-        connector = None
-
-    # This cookie lets us avoid the YouTube consent page
-    cookies = {'CONSENT':'YES+'}
-    headers = {'Accept-Language':'en-US'}
-    await semaphore.acquire()
-    async with aiohttp.ClientSession(connector=connector, cookies = cookies) as session:
-        session.headers['Accept-Language']='en-US'
-        async with session.get(url, headers=headers) as response:
-            if contentType == 'text':
-                result = await response.text()
-            elif contentType == 'bytes':
-                result = await response.read()
-            else:
-                raise ValueError(f"unknown content type: {contentType}")
-    semaphore.release()
-    return result
-
-# if you have a channel id, you can use this function to get the rss address
-def getRssAddressFromChannelId(channelId):
-    return f"https://www.youtube.com/feeds/videos.xml?channel_id={channelId}"
-
-# use this function to get a list of query results from searching for a channel
-# results are of the type ChannelQueryObject
-async def getChannelQueryResults(query, useTor=False, auth=None):
-    url = 'https://youtube.com/results?search_query=' + urllib.parse.quote(query) + \
-            '&sp=EgIQAg%253D%253D'
-    semaphore = asyncio.Semaphore(MAX_CONNECTIONS)
-    getTask = asyncio.create_task(getHttpContent(url, useTor=useTor, semaphore=semaphore,
-        auth=auth))
-    htmlContent = await getTask
-    parser = parser_classes.ChannelQueryParser()
-    parser.feed(htmlContent)
-    return parser.resultList
-
-# use this function to get a list of query results from searching for a video
-# results are of the type VideoQueryObject
-async def getVideoQueryResults(query, ueberzug, useTor=False, auth=None):
-    url = 'https://youtube.com/results?search_query=' + urllib.parse.quote(query) + \
-            '&sp=EgIQAQ%253D%253D'
-    semaphore = asyncio.Semaphore(MAX_CONNECTIONS)
-    getTask = asyncio.create_task(getHttpContent(url, semaphore=semaphore, useTor=useTor, 
-        auth=auth))
-    htmlContent = await getTask
-    parser = parser_classes.VideoQueryParser()
-    parser.feed(htmlContent)
-    if ueberzug:
-        if os.path.isdir(THUMBNAIL_SEARCH_DIR):
-            shutil.rmtree(THUMBNAIL_SEARCH_DIR)
-        os.mkdir(THUMBNAIL_SEARCH_DIR)
-        thumbnailTask = asyncio.create_task(getSearchThumbnails(parser.resultList,
-            ueberzug, semaphore=semaphore, useTor=useTor, auth = auth))
-        await thumbnailTask
-
-    return parser.resultList
-
-# use this function to get rss entries from channel id
-async def getRssEntriesFromChannelId(channelId, semaphore, useTor=False, auth=None):
-    rssAddress = getRssAddressFromChannelId(channelId)
-    getTask = asyncio.create_task(getHttpContent(rssAddress, useTor, semaphore=semaphore,
-        auth=auth))
-    rssContent = await getTask
-    entries = feedparser.parse(rssContent)['entries']
-    return entries
-
-# use this function to initialize the database (dict format so it's easy to save as json)
-def initiateYouTubeRssDatabase():
-    database = {}
-    database['feeds'] = {}
-    database['id to title'] = {}
-    database['title to id'] = {}
-    return database
 
 # use this function to add a subscription to the database
 def addSubscriptionToDatabase(channelId, ueberzug, channelTitle, refresh=False,
         useTor=False, circuitManager=None):
-    database = parseDatabaseFile(DATABASE_PATH)
+    database = database_management.parseDatabaseFile(constants.DATABASE_PATH)
     database['feeds'][channelId] = []
     database['id to title'][channelId] = channelTitle
     database['title to id'][channelTitle] = channelId
-    outputDatabaseToFile(database, DATABASE_PATH)
+    database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
     auth = None
     if circuitManager is not None and useTor:
         auth = circuitManager.getAuth()
     if refresh:
-        asyncio.run(refreshSubscriptionsByChannelId( [channelId], ueberzug, useTor=useTor, 
+        asyncio.run(database_management.refreshSubscriptionsByChannelId( [channelId], ueberzug, useTor=useTor, 
                 auth=auth))
 
-def deleteThumbnailsByChannelTitle(database, channelTitle):
-    if channelTitle not in database['title to id']:
-        return
-    channelId = database['title to id'][channelTitle]
-    deleteThumbnailsByChannelId(database, channelId)
-    return
-
-def deleteThumbnailsByChannelId(database, channelId):
-    if channelId not in database['id to title']:
-        return
-    feed = database['feeds'][channelId]
-    for entry in feed:
-        if os.path.isfile(entry['thumbnail file']):
-            os.remove(entry['thumbnail file'])
-
-# use this function to remove a subscription from the database by channel title
-def removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle):
-    if channelTitle not in database['title to id']:
-        return
-    channelId = database['title to id'][channelTitle]
-    removeSubscriptionFromDatabaseByChannelId(database, channelId)
-    return
-
-# use this function to remove a subscription from the database by channel ID
-def removeSubscriptionFromDatabaseByChannelId(database, channelId):
-    if channelId not in database['id to title']:
-        return
-    channelTitle = database['id to title'].pop(channelId)
-    database['title to id'].pop(channelTitle)
-    database['feeds'].pop(channelId)
-    outputDatabaseToFile(database, DATABASE_PATH)
 
 
-# use this function to retrieve new RSS entries for a subscription and add them to
-# a database
-
-async def refreshSubscriptionsByChannelId(channelIdList, ueberzug, useTor=False, 
-        auth=None):
-    database = parseDatabaseFile(DATABASE_PATH)
-    localFeeds = database['feeds']
-    tasks = []
-
-    semaphore = asyncio.Semaphore(MAX_CONNECTIONS)
-
-    for channelId in channelIdList:
-        localFeed = localFeeds[channelId]
-        tasks.append(asyncio.create_task(refreshSubscriptionByChannelId(channelId, localFeed, 
-            semaphore=semaphore, useTor=useTor, auth=auth)))
-
-    for task in tasks:
-        await task
-
-    if ueberzug:
-        await asyncio.create_task(getThumbnailsForAllSubscriptions(channelIdList, 
-            database, semaphore=semaphore, useTor=useTor, auth=auth))
-    outputDatabaseToFile(database, DATABASE_PATH)
-
-async def refreshSubscriptionByChannelId(channelId, localFeed, semaphore, useTor=False,
-        auth=None):
-    task = asyncio.create_task(getRssEntriesFromChannelId(channelId, semaphore=semaphore, useTor=useTor, 
-            auth=auth))
-    remoteFeed = await task
-    if remoteFeed is not None:
-        remoteFeed.reverse()
-        for entry in remoteFeed:
-            filteredEntry = getRelevantDictFromFeedParserDict(entry)
-
-            filteredEntryIsNew = True
-            for i, localEntry in enumerate(localFeed):
-                if localEntry['id'] == filteredEntry['id']:
-                    filteredEntryIsNew = False
-                    # in case any relevant data about the entry is changed, update it
-                    filteredEntry['seen'] = localEntry['seen']
-                    if filteredEntry['thumbnail'] == localEntry['thumbnail'] and \
-                            'thumbnail file' in filteredEntry:
-                        filteredEntry['thumbnail file'] = localEntry['thumbnail file']
-                    localFeed[i] = filteredEntry
-                    break
-            if filteredEntryIsNew:
-                localFeed.insert(0, filteredEntry)
-
-
-# use this function to open a YouTube video url in mpv
-def openUrlInMpv(url, useTor=False, maxResolution=1080, circuitManager = None):
-    try:
-        command = []
-        if useTor:
-            auth = circuitManager.getAuth()
-            command.append('torsocks')
-            command.append('-u')
-            command.append(auth[0])
-            command.append('-p')
-            command.append(auth[1])
-        command += ['mpv', \
-                f'--ytdl-format=bestvideo[height=?{maxResolution}]+bestaudio/best']
-        command.append(url)
-        mpvProcess = subprocess.Popen(command, stdout = subprocess.DEVNULL, 
-                stderr = subprocess.STDOUT)
-        mpvProcess.wait()
-        result = mpvProcess.poll()
-    except KeyboardInterrupt:
-        mpvProcess.kill()
-        mpvProcess.wait()
-        result = -1
-    return result == 0
-
-# use this function to get the data we care about from the entries found by the RSS parser
-def getRelevantDictFromFeedParserDict(feedparserDict):
-    outputDict =    {
-                        'id'        : feedparserDict['id'],
-                        'link'      : feedparserDict['link'],
-                        'title'     : feedparserDict['title'],
-                        'thumbnail' : feedparserDict['media_thumbnail'][0]['url'],
-                        'seen'      : False
-                    }
-    return outputDict
-
-"""
-Functions for managing database persistence between user sessions
-"""
-
-# use this function to read database from json string
-def parseDatabaseContent(content):
-    return json.loads(content)
-
-# use this function to read database from json file
-def parseDatabaseFile(filename):
-    with open(filename, 'r') as filePointer:
-        return json.load(filePointer)
-
-# use this function to return json representation of database as string
-def getDatabaseString(database):
-    return json.dumps(database, indent=4)
-
-# use this function to write json representation of database to file
-def outputDatabaseToFile(database, filename):
-    with open(filename, 'w') as filePointer:
-        return json.dump(database, filePointer, indent=4)
 
 """
 Application control flow
@@ -435,7 +166,7 @@ def doMarkChannelAsRead(database, channelId):
             break
     for video in database['feeds'][channelId]:
         video['seen'] = not allAreAlreadyMarkedAsRead
-    outputDatabaseToFile(database, DATABASE_PATH)
+    database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
 
 # this is the application level flow entered when the user has chosen to search for a
 # video
@@ -447,8 +178,9 @@ def doInteractiveSearchForVideo(ueberzug, useTor=False, circuitManager=None):
             auth = None
             if useTor and circuitManager is not None:
                 auth = circuitManager.getAuth()
-            resultList = presentation.doWaitScreen("Getting video results...", getVideoQueryResults,
-                    query, ueberzug, useTor=useTor, auth=auth)
+            resultList = presentation.doWaitScreen("Getting video results...", 
+                    connection_management.getVideoQueryResults, query, ueberzug, 
+                    useTor=useTor, auth=auth)
             if resultList:
                 menuOptions = [
                     MethodMenuDecision(
@@ -468,58 +200,9 @@ def doInteractiveSearchForVideo(ueberzug, useTor=False, circuitManager=None):
         except Exception as e:
             if not presentation.doYesNoQuery(f"Something went wrong! Try again?"):
                 querying = False
-    if os.path.isdir(THUMBNAIL_SEARCH_DIR):
-        shutil.rmtree(THUMBNAIL_SEARCH_DIR)
+    if os.path.isdir(constants.THUMBNAIL_SEARCH_DIR):
+        shutil.rmtree(constants.THUMBNAIL_SEARCH_DIR)
 
-async def getThumbnailsForAllSubscriptions(channelIdList, database, semaphore, useTor=False, auth=None):
-    feeds = database['feeds']
-    tasks = []
-    for channelId in channelIdList:
-        feed = feeds[channelId]
-        tasks.append(asyncio.create_task(getThumbnailsForFeed(feed, 
-            semaphore=semaphore, useTor=useTor, auth=auth)))
-    for task in tasks:
-        await task
-
-
-async def getThumbnailsForFeed(feed, semaphore, useTor=False, auth = None):
-    getTasks = {}
-
-    for entry in feed:
-        if 'thumbnail file' in entry:
-            continue
-        videoId = entry['id'].split(':')[-1]
-        thumbnailFileName = '/'.join([THUMBNAIL_DIR, videoId + 
-                '.jpg'])
-        getTask = asyncio.create_task(getHttpContent(entry['thumbnail'], useTor=useTor,
-                semaphore=semaphore, auth = auth, contentType = 'bytes'))
-        getTasks[entry['id']] = (getTask, thumbnailFileName)
-
-    for entry in feed:
-        if 'thumbnail file' in entry:
-            continue
-        thumbnailContent = await getTasks[entry['id']][0]
-        thumbnailFileName = getTasks[entry['id']][1]
-        entry['thumbnail file'] = thumbnailFileName
-        open(thumbnailFileName, 'wb').write(thumbnailContent)
-
-async def getSearchThumbnails(resultList, ueberzug, semaphore, useTor = False, auth=None):
-    tasks = []
-    for result in resultList:
-        tasks.append(asyncio.create_task(getSearchThumbnailFromSearchResult(result, 
-            ueberzug, semaphore = semaphore, useTor=useTor, auth=auth)))
-    for task in tasks:
-        await task
-
-async def getSearchThumbnailFromSearchResult(result, ueberzug, semaphore, useTor=False, auth=None):
-    videoId = result.videoId.split(':')[-1]
-    thumbnailFileName = '/'.join([THUMBNAIL_SEARCH_DIR, videoId +
-            '.jpg'])
-    getTask = asyncio.create_task(getHttpContent(result.thumbnail, semaphore=semaphore, useTor=useTor,
-            auth = auth, contentType='bytes'))
-    thumbnailContent = await getTask
-    result.thumbnailFile = thumbnailFileName
-    open(thumbnailFileName, 'wb').write(thumbnailContent)
 
 # this is the application level flow entered when the user has chosen to subscribe to a
 # new channel
@@ -532,7 +215,7 @@ def doInteractiveChannelSubscribe(ueberzug, useTor=False, circuitManager=None):
             if useTor and circuitManager is not None:
                 auth = circuitManager.getAuth()
             resultList = presentation.doWaitScreen("Getting channel results...", 
-                    getChannelQueryResults, query, useTor=useTor, 
+                    connection_management.getChannelQueryResults, query, useTor=useTor, 
                     auth=auth)
             if resultList:
                 menuOptions = [
@@ -552,14 +235,14 @@ def doInteractiveChannelSubscribe(ueberzug, useTor=False, circuitManager=None):
             else:
                 if not presentation.doYesNoQuery("No results found. Try again?"):
                     querying = False
-        except Exception:
+        except Exception as e:
             if not presentation.doYesNoQuery("Something went wrong. Try again?"):
                 querying = False
 
 # this is the application level flow entered when the user has chosen a channel that it
 # wants to subscribe to
 def doChannelSubscribe(result, useTor, circuitManager, ueberzug):
-    database = presentation.doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
+    database = presentation.doWaitScreen('', database_management.parseDatabaseFile, constants.DATABASE_PATH)
     refreshing = True
     if result.channelId in database['feeds']:
         presentation.doNotify("Already subscribed to this channel!")
@@ -571,7 +254,7 @@ def doChannelSubscribe(result, useTor, circuitManager, ueberzug):
                     result.title, refresh=True, useTor=useTor,
                     circuitManager=circuitManager)
             refreshing = False
-        except Exception:
+        except Exception as e:
             if not presentation.doYesNoQuery("Something went wrong. Try again?"):
                 doChannelUnsubscribe(result.title)
                 querying = False
@@ -581,7 +264,7 @@ def doChannelSubscribe(result, useTor, circuitManager, ueberzug):
 # this is the application level flow entered when the user has chosen to unsubscribe to 
 # a channel
 def doInteractiveChannelUnsubscribe():
-    database = presentation.doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
+    database = presentation.doWaitScreen('', database_management.parseDatabaseFile, constants.DATABASE_PATH)
     if not database['title to id']:
         presentation.doNotify('You are not subscribed to any channels')
         return
@@ -598,17 +281,17 @@ def doInteractiveChannelUnsubscribe():
 # this is the application level flow entered when the user has chosen a channel that it
 # wants to unsubscribe from
 def doChannelUnsubscribe(channelTitle):
-    database = presentation.doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
+    database = presentation.doWaitScreen('', database_management.parseDatabaseFile, constants.DATABASE_PATH)
     if ueberzug:
-        deleteThumbnailsByChannelTitle(database, channelTitle)
-    removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
-    outputDatabaseToFile(database, DATABASE_PATH)
+        database_management.deleteThumbnailsByChannelTitle(database, channelTitle)
+    database_management.removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
+    database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
     return indicator_classes.ReturnFromMenu
 
 # this is the application level flow entered when the user has chosen to browse
 # its current subscriptions
 def doInteractiveBrowseSubscriptions(useTor, circuitManager, ueberzug):
-    database = presentation.doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
+    database = presentation.doWaitScreen('', database_management.parseDatabaseFile, constants.DATABASE_PATH)
     menuOptions = [
         MethodMenuDecision(
             FeedDescriber(
@@ -662,11 +345,11 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager
             i+1
         ) for i, video in enumerate(videos)
     ]
-    outputDatabaseToFile(database, DATABASE_PATH)
+    database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
     menuOptions.insert(0, MethodMenuDecision("[Go back]", doReturnFromMenu))
     doMethodMenu("Which video do you want to watch?", menuOptions, 
             ueberzug = ueberzug, adHocKeys=adHocKeys)
-    outputDatabaseToFile(database, DATABASE_PATH)
+    database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
 
 # this is the application level flow entered when the user has selected a video to watch
 # while browsing its current subscriptions
@@ -674,7 +357,7 @@ def doPlayVideoFromSubscription(database, video, useTor, circuitManager):
     result = playVideo(video['link'], useTor, circuitManager = circuitManager)
     if not video['seen']:
         video['seen'] = result
-        outputDatabaseToFile(database, DATABASE_PATH)
+        database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
 
 # this is the application level flow entered when the user is watching any video from
 # YouTube
@@ -684,8 +367,8 @@ def playVideo(videoUrl, useTor=False, circuitManager = None):
             resolutionMenuList)
     result = False
     while not result:
-        result = presentation.doWaitScreen("playing video...", openUrlInMpv, videoUrl, useTor=useTor,
-                maxResolution=maxResolution, circuitManager = circuitManager)
+        result = presentation.doWaitScreen("playing video...", connection_management.openUrlInMpv,
+                videoUrl, useTor=useTor, maxResolution=maxResolution, circuitManager = circuitManager)
         if result or not presentation.doYesNoQuery(f"Something went wrong when playing the " + \
                 "video. Try again?"):
             break
@@ -694,7 +377,8 @@ def playVideo(videoUrl, useTor=False, circuitManager = None):
 # this is the application level flow entered when the user has chosen to refresh its
 # subscriptions
 def doRefreshSubscriptions(ueberzug ,useTor=False, circuitManager=None):
-    database = presentation.doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
+    database = presentation.doWaitScreen('', database_management.parseDatabaseFile, 
+            constants.DATABASE_PATH)
     channelIdList = list(database['id to title'])
     refreshing = True
     while refreshing:
@@ -702,8 +386,9 @@ def doRefreshSubscriptions(ueberzug ,useTor=False, circuitManager=None):
             auth = None
             if useTor and circuitManager is not None:
                 auth = circuitManager.getAuth()
-            presentation.doWaitScreen("refreshing subscriptions...", refreshSubscriptionsByChannelId,
-                    channelIdList, ueberzug, useTor=useTor, auth=auth)
+            presentation.doWaitScreen("refreshing subscriptions...", 
+                    database_management.refreshSubscriptionsByChannelId, channelIdList, 
+                    ueberzug, useTor=useTor, auth=auth)
             refreshing = False
         except aiohttp.client_exceptions.ClientConnectionError:
             if not presentation.doYesNoQuery("Something went wrong. Try again?"):
@@ -741,7 +426,7 @@ def doStartupWithTor(ueberzug):
         doMethodMenu("Tor daemon not found on port 9050! " + \
                 "Continue without tor?", menuOptions, showItemNumber=False)
     else:
-        doMainMenu(ueberzug, useTor=True, circuitManager=CircuitManager())
+        doMainMenu(ueberzug, useTor=True, circuitManager=connection_management.CircuitManager())
     return indicator_classes.ReturnFromMenu
 
 
@@ -826,21 +511,18 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
 
-    rnd = secrets.SystemRandom()
     ueberzug = None
     if args.use_thumbnails:
-        import shutil
         import ueberzug.lib.v0 as ueberzug
-        presentation.ueberzug = ueberzug
 
-    if not os.path.isdir(YOUTUBE_RSS_DIR):
-        os.mkdir(YOUTUBE_RSS_DIR)
-    if not os.path.isdir(THUMBNAIL_DIR) and ueberzug:
-        os.mkdir(THUMBNAIL_DIR)
-    if not os.path.isfile(DATABASE_PATH):
-        database = initiateYouTubeRssDatabase()
-        presentation.doWaitScreen('', outputDatabaseToFile, database, DATABASE_PATH)
+    if not os.path.isdir(constants.YOUTUBE_RSS_DIR):
+        os.mkdir(constants.YOUTUBE_RSS_DIR)
+    if not os.path.isdir(constants.THUMBNAIL_DIR) and ueberzug:
+        os.mkdir(constants.THUMBNAIL_DIR)
+    if not os.path.isfile(constants.DATABASE_PATH):
+        database = database_management.initiateYouTubeRssDatabase()
+        presentation.doWaitScreen('', database_management.outputDatabaseToFile, database, constants.DATABASE_PATH)
     else:
-        database = presentation.doWaitScreen('', parseDatabaseFile, DATABASE_PATH)
+        database = presentation.doWaitScreen('', database_management.parseDatabaseFile, constants.DATABASE_PATH)
 
     doStartupMenu(ueberzug)
