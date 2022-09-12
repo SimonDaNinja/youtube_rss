@@ -1,6 +1,7 @@
 import constants
 import presentation
 import indicator_classes
+import database_management
 
 """
 classes
@@ -72,6 +73,25 @@ class AdHocKey:
         else:
             raise TypeError
 
+class MarkAllAsReadKey(AdHocKey):
+    def __init__(self, channelId, activationIndex, database, key=ord('a')):
+        item =  MethodMenuDecision(
+                    f"mark all by {channelId} as read",
+                    doMarkChannelAsRead,
+                    database,
+                    channelId
+                )
+        AdHocKey.__init__(self, key=key, item=item, activationIndex=activationIndex)
+
+class MarkEntryAsReadKey(AdHocKey):
+    def __init__(self, video, activationIndex, key=ord('a')):
+        item =  MethodMenuDecision(
+                    "mark video as read",
+                    lambda video : video.update({'seen':(not video['seen'])}),
+                    video
+                )
+        AdHocKey.__init__(self, key=key, item=item, activationIndex=activationIndex)
+
 """
 functions
 """
@@ -106,3 +126,13 @@ def doNotifyAndReturnFromMenu(message):
 def doReturnFromMenu():
     return indicator_classes.ReturnFromMenu
 
+# this function is used in processing of a particular AdHocKey
+def doMarkChannelAsRead(database, channelId):
+    allAreAlreadyMarkedAsRead = True
+    for video in database['feeds'][channelId]:
+        if not video['seen']:
+            allAreAlreadyMarkedAsRead = False
+            break
+    for video in database['feeds'][channelId]:
+        video['seen'] = not allAreAlreadyMarkedAsRead
+    database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)

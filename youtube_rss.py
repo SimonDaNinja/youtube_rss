@@ -32,39 +32,11 @@ import shutil
 import database_management
 import method_menu
 
-class MarkAllAsReadKey(method_menu.AdHocKey):
-    def __init__(self, channelId, activationIndex, database, key=ord('a')):
-        item =  method_menu.MethodMenuDecision(
-                    f"mark all by {channelId} as read",
-                    doMarkChannelAsRead,
-                    database,
-                    channelId
-                )
-        method_menu.AdHocKey.__init__(self, key=key, item=item, activationIndex=activationIndex)
-
-class MarkEntryAsReadKey(method_menu.AdHocKey):
-    def __init__(self, video, activationIndex, key=ord('a')):
-        item =  method_menu.MethodMenuDecision(
-                    "mark video as read",
-                    lambda video : video.update({'seen':(not video['seen'])}),
-                    video
-                )
-        method_menu.AdHocKey.__init__(self, key=key, item=item, activationIndex=activationIndex)
 
 
 """
 Application control flow
 """
-
-def doMarkChannelAsRead(database, channelId):
-    allAreAlreadyMarkedAsRead = True
-    for video in database['feeds'][channelId]:
-        if not video['seen']:
-            allAreAlreadyMarkedAsRead = False
-            break
-    for video in database['feeds'][channelId]:
-        video['seen'] = not allAreAlreadyMarkedAsRead
-    database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
 
 # this is the application level flow entered when the user has chosen to search for a
 # video
@@ -205,7 +177,7 @@ def doInteractiveBrowseSubscriptions(useTor, circuitManager, ueberzug):
     ]
 
     adHocKeys = [
-        MarkAllAsReadKey(
+        method_menu.MarkAllAsReadKey(
             channelId,
             i+1,
             database
