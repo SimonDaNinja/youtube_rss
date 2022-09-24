@@ -210,7 +210,7 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager
     ]
 
     adHocKeys = [
-        MarkEntryAsReadKey(
+        method_menu.MarkEntryAsReadKey(
             video,
             i+1
         ) for i, video in enumerate(videos)
