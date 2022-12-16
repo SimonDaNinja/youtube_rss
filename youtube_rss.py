@@ -32,15 +32,13 @@ import shutil
 import database_management
 import method_menu
 
-
-
 """
 Application control flow
 """
 
 # this is the application level flow entered when the user has chosen to search for a
 # video
-def doInteractiveSearchForVideo(ueberzug, useTor=False, circuitManager=None):
+def doInteractiveSearchForVideo(useTor=False, circuitManager=None):
     query = presentation.doGetUserInput("Search for video: ")
     querying = True
     while querying:
@@ -49,7 +47,7 @@ def doInteractiveSearchForVideo(ueberzug, useTor=False, circuitManager=None):
             if useTor and circuitManager is not None:
                 auth = circuitManager.getAuth()
             resultList = presentation.doWaitScreen("Getting video results...", 
-                    connection_management.getVideoQueryResults, query, ueberzug, 
+                    connection_management.getVideoQueryResults, query,
                     useTor=useTor, auth=auth)
             if resultList:
                 menuOptions = [
@@ -62,7 +60,7 @@ def doInteractiveSearchForVideo(ueberzug, useTor=False, circuitManager=None):
                     ) for result in resultList
                 ]
                 menuOptions.insert(0, method_menu.MethodMenuDecision("[Go back]", method_menu.doReturnFromMenu))
-                method_menu.doMethodMenu(f"Search results for '{query}':",menuOptions, ueberzug=ueberzug)
+                method_menu.doMethodMenu(f"Search results for '{query}':",menuOptions)
                 querying = False
             else:
                 presentation.doNotify("no results found")
@@ -70,13 +68,11 @@ def doInteractiveSearchForVideo(ueberzug, useTor=False, circuitManager=None):
         except Exception as e:
             if not presentation.doYesNoQuery(f"Something went wrong! Try again?"):
                 querying = False
-    if os.path.isdir(constants.THUMBNAIL_SEARCH_DIR):
-        shutil.rmtree(constants.THUMBNAIL_SEARCH_DIR)
 
 
 # this is the application level flow entered when the user has chosen to subscribe to a
 # new channel
-def doInteractiveChannelSubscribe(ueberzug, useTor=False, circuitManager=None):
+def doInteractiveChannelSubscribe(useTor=False, circuitManager=None):
     query = presentation.doGetUserInput("Enter channel to search for: ")
     querying = True
     while querying:
@@ -94,8 +90,7 @@ def doInteractiveChannelSubscribe(ueberzug, useTor=False, circuitManager=None):
                         doChannelSubscribe,
                         result=result,
                         useTor=useTor,
-                        circuitManager=circuitManager,
-                        ueberzug=ueberzug
+                        circuitManager=circuitManager
                     ) for result in resultList
                 ]
                 menuOptions.insert(0, method_menu.MethodMenuDecision('[Go back]', method_menu.doReturnFromMenu))
@@ -111,7 +106,7 @@ def doInteractiveChannelSubscribe(ueberzug, useTor=False, circuitManager=None):
 
 # this is the application level flow entered when the user has chosen a channel that it
 # wants to subscribe to
-def doChannelSubscribe(result, useTor, circuitManager, ueberzug):
+def doChannelSubscribe(result, useTor, circuitManager):
     database = presentation.doWaitScreen('', database_management.parseDatabaseFile, constants.DATABASE_PATH)
     refreshing = True
     if result.channelId in database['feeds']:
@@ -120,7 +115,7 @@ def doChannelSubscribe(result, useTor, circuitManager, ueberzug):
     while refreshing:
         try:
             presentation.doWaitScreen(f"getting data from feed for {result.title}...",
-                    method_menu.addSubscriptionToDatabase, result.channelId, ueberzug,
+                    method_menu.addSubscriptionToDatabase, result.channelId,
                     result.title, refresh=True, useTor=useTor,
                     circuitManager=circuitManager)
             refreshing = False
@@ -152,15 +147,13 @@ def doInteractiveChannelUnsubscribe():
 # wants to unsubscribe from
 def doChannelUnsubscribe(channelTitle):
     database = presentation.doWaitScreen('', database_management.parseDatabaseFile, constants.DATABASE_PATH)
-    if ueberzug:
-        database_management.deleteThumbnailsByChannelTitle(database, channelTitle)
     database_management.removeSubscriptionFromDatabaseByChannelTitle(database, channelTitle)
     database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
     return indicator_classes.ReturnFromMenu
 
 # this is the application level flow entered when the user has chosen to browse
 # its current subscriptions
-def doInteractiveBrowseSubscriptions(useTor, circuitManager, ueberzug):
+def doInteractiveBrowseSubscriptions(useTor, circuitManager):
     database = presentation.doWaitScreen('', database_management.parseDatabaseFile, constants.DATABASE_PATH)
     menuOptions = [
         method_menu.MethodMenuDecision(
@@ -171,8 +164,7 @@ def doInteractiveBrowseSubscriptions(useTor, circuitManager, ueberzug):
             database,
             channelTitle,
             useTor,
-            circuitManager,
-            ueberzug
+            circuitManager
         ) for channelTitle in database['title to id']
     ]
 
@@ -195,7 +187,7 @@ def doInteractiveBrowseSubscriptions(useTor, circuitManager, ueberzug):
 # this is the application level flow entered when the user has chosen a channel while
 # browsing its current subscriptions;
 # the user now gets to select a video from the channel to watch
-def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager, ueberzug):
+def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager):
     channelId = database['title to id'][channelTitle]
     videos = database['feeds'][channelId]
     menuOptions = [
@@ -218,7 +210,7 @@ def doSelectVideoFromSubscription(database, channelTitle, useTor, circuitManager
     database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
     menuOptions.insert(0, method_menu.MethodMenuDecision("[Go back]", method_menu.doReturnFromMenu))
     method_menu.doMethodMenu("Which video do you want to watch?", menuOptions, 
-            ueberzug = ueberzug, adHocKeys=adHocKeys)
+            adHocKeys=adHocKeys)
     database_management.outputDatabaseToFile(database, constants.DATABASE_PATH)
 
 # this is the application level flow entered when the user has selected a video to watch
@@ -246,7 +238,7 @@ def playVideo(videoUrl, useTor=False, circuitManager = None):
 
 # this is the application level flow entered when the user has chosen to refresh its
 # subscriptions
-def doRefreshSubscriptions(ueberzug ,useTor=False, circuitManager=None):
+def doRefreshSubscriptions(useTor=False, circuitManager=None):
     database = presentation.doWaitScreen('', database_management.parseDatabaseFile, 
             constants.DATABASE_PATH)
     channelIdList = list(database['id to title'])
@@ -258,35 +250,32 @@ def doRefreshSubscriptions(ueberzug ,useTor=False, circuitManager=None):
                 auth = circuitManager.getAuth()
             presentation.doWaitScreen("refreshing subscriptions...", 
                     database_management.refreshSubscriptionsByChannelId, channelIdList, 
-                    ueberzug, useTor=useTor, auth=auth)
+                    useTor=useTor, auth=auth)
             refreshing = False
         except aiohttp.client_exceptions.ClientConnectionError:
             if not presentation.doYesNoQuery("Something went wrong. Try again?"):
                 refreshing = False
 
-def doStartupMenu(ueberzug):
+def doStartupMenu():
     menuOptions = [
         method_menu.MethodMenuDecision(
             "Yes",
-            doStartupWithTor,
-            ueberzug
+            doStartupWithTor
         ), method_menu.MethodMenuDecision(
             "No",
-            doMainMenu,
-            ueberzug
+            doMainMenu
         )
     ]
     method_menu.doMethodMenu("Do you want to use tor?", menuOptions, showItemNumber=False)
 
-def doStartupWithTor(ueberzug):
+def doStartupWithTor():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         result = sock.connect_ex(('127.0.0.1',9050))
     if result != 0:
         menuOptions = [
             method_menu.MethodMenuDecision(
                 "Yes",
-                doMainMenu,
-                ueberzug
+                doMainMenu
             ), method_menu.MethodMenuDecision(
                 "No",
                 method_menu.doNotifyAndReturnFromMenu,
@@ -296,35 +285,31 @@ def doStartupWithTor(ueberzug):
         method_menu.doMethodMenu("Tor daemon not found on port 9050! " + \
                 "Continue without tor?", menuOptions, showItemNumber=False)
     else:
-        doMainMenu(ueberzug, useTor=True, circuitManager=connection_management.CircuitManager())
+        doMainMenu(useTor=True, circuitManager=connection_management.CircuitManager())
     return indicator_classes.ReturnFromMenu
 
 
 
-def doMainMenu(ueberzug, useTor=False, circuitManager=None):
+def doMainMenu(useTor=False, circuitManager=None):
     menuOptions =   [
         method_menu.MethodMenuDecision( 
             "Search for video",
             doInteractiveSearchForVideo,
-            ueberzug,
             useTor=useTor,
             circuitManager=circuitManager
         ), method_menu.MethodMenuDecision( 
             "Refresh subscriptions",
             doRefreshSubscriptions,
-            ueberzug,
             useTor=useTor,
             circuitManager=circuitManager
         ), method_menu.MethodMenuDecision( 
             "Browse subscriptions",
             doInteractiveBrowseSubscriptions,
             useTor = useTor,
-            circuitManager = circuitManager,
-            ueberzug = ueberzug
+            circuitManager = circuitManager
         ), method_menu.MethodMenuDecision( 
             "Subscribe to new channel",
             doInteractiveChannelSubscribe,
-            ueberzug,
             useTor=useTor,
             circuitManager=circuitManager
         ), method_menu.MethodMenuDecision( 
@@ -345,23 +330,18 @@ def doMainMenu(ueberzug, useTor=False, circuitManager=None):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="A YouTube-client for managing subscriptions and watching videos anonymously over Tor without a Google account.")
-    parser.add_argument('--use-thumbnails', 
-            action='store_true')
+    parser.add_argument('--use-thumbnails', action='store_true')
     args = parser.parse_args()
 
-
-    ueberzug = None
     if args.use_thumbnails:
-        import ueberzug.lib.v0 as ueberzug
+        presentation.doNotify("Thumbnails no longer supported (see README for mor info)!")
 
     if not os.path.isdir(constants.YOUTUBE_RSS_DIR):
         os.mkdir(constants.YOUTUBE_RSS_DIR)
-    if not os.path.isdir(constants.THUMBNAIL_DIR) and ueberzug:
-        os.mkdir(constants.THUMBNAIL_DIR)
     if not os.path.isfile(constants.DATABASE_PATH):
         database = database_management.initiateYouTubeRssDatabase()
         presentation.doWaitScreen('', database_management.outputDatabaseToFile, database, constants.DATABASE_PATH)
     else:
         database = presentation.doWaitScreen('', database_management.parseDatabaseFile, constants.DATABASE_PATH)
 
-    doStartupMenu(ueberzug)
+    doStartupMenu()

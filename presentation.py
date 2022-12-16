@@ -34,15 +34,15 @@ def doYnQueryNcurses(stdscr, query):
             =='yes'
 
 # This function lets the user choose an object from a list
-def doSelectionQuery(query, options, ueberzug = None, queryStyle=indicator_classes.ItemQuery, 
+def doSelectionQuery(query, options, queryStyle=indicator_classes.ItemQuery, 
         initialIndex=None, showItemNumber=True, adHocKeys=[]):
-    return curses.wrapper(doSelectionQueryNcurses, query, options, ueberzug,
+    return curses.wrapper(doSelectionQueryNcurses, query, options,
             queryStyle=queryStyle, initialIndex=initialIndex,
             showItemNumber=showItemNumber, adHocKeys=adHocKeys)
 
 # This function is where the Ncurses level of doSelectionQuery starts.
 # It should never be called directly, but always through doSelectionQuery!
-def doSelectionQueryNcurses(stdscr, query, options, ueberzug = None,
+def doSelectionQueryNcurses(stdscr, query, options, 
         queryStyle=indicator_classes.ItemQuery, initialIndex=None, showItemNumber=True, 
         adHocKeys=[]):
     curses.curs_set(0)
@@ -54,55 +54,54 @@ def doSelectionQueryNcurses(stdscr, query, options, ueberzug = None,
     else:
         choiceIndex = 0
     while True:
-        with (ueberzug.Canvas() if ueberzug else indicator_classes.NoCanvas()) as canvas:
-            printMenu(query, options, stdscr, choiceIndex, showItemNumber=showItemNumber,
-                    jumpNumStr = ''.join(jumpNumList), canvas = canvas, ueberzug=ueberzug)
-            key = stdscr.getch()
-            # Ad hoc keys should always take first precedence
+        printMenu(query, options, stdscr, choiceIndex, showItemNumber=showItemNumber,
+                jumpNumStr = ''.join(jumpNumList))
+        key = stdscr.getch()
+        # Ad hoc keys should always take first precedence
 
-            if key in adHocKeys:
-                for adHocKey in adHocKeys:
-                    if adHocKey.isValidIndex(choiceIndex):
-                        if queryStyle is indicator_classes.ItemQuery:
-                            return adHocKey.item
-                        elif queryStyle is indicator_classes.IndexQuery:
-                            return choiceIndex
-                        elif queryStyle is indicator_classes.CombinedQuery:
-                            return adHocKey.item, choiceIndex
+        if key in adHocKeys:
+            for adHocKey in adHocKeys:
+                if adHocKey.isValidIndex(choiceIndex):
+                    if queryStyle is indicator_classes.ItemQuery:
+                        return adHocKey.item
+                    elif queryStyle is indicator_classes.IndexQuery:
+                        return choiceIndex
+                    elif queryStyle is indicator_classes.CombinedQuery:
+                        return adHocKey.item, choiceIndex
 
-            elif key in [curses.KEY_UP, ord('k')]:
+        elif key in [curses.KEY_UP, ord('k')]:
+            jumpNumList = []
+            choiceIndex = (choiceIndex-1)%len(options)
+        elif key in [curses.KEY_DOWN, ord('j')]:
+            jumpNumList = []
+            choiceIndex = (choiceIndex+1)%len(options)
+        elif key in [ord(digit) for digit in '1234567890']:
+            if len(jumpNumList) < 6:
+                jumpNumList.append(chr(key))
+        elif key in [curses.KEY_BACKSPACE, ord('\b'), ord('\x7f')]:
+            if jumpNumList:
+                jumpNumList.pop()
+        elif key == ord('g'):
+            jumpNumList = []
+            choiceIndex = 0
+        elif key == ord('G'):
+            jumpNumList = []
+            choiceIndex = len(options)-1
+        elif key in [ord('q'), ord('h'), curses.KEY_LEFT]:
+            raise KeyboardInterrupt
+        elif key in [curses.KEY_ENTER, 10, 13, ord('l'), curses.KEY_RIGHT]:
+            if jumpNumList:
+                jumpNum = int(''.join(jumpNumList))
+                choiceIndex = min(jumpNum-1, len(options)-1)
                 jumpNumList = []
-                choiceIndex = (choiceIndex-1)%len(options)
-            elif key in [curses.KEY_DOWN, ord('j')]:
-                jumpNumList = []
-                choiceIndex = (choiceIndex+1)%len(options)
-            elif key in [ord(digit) for digit in '1234567890']:
-                if len(jumpNumList) < 6:
-                    jumpNumList.append(chr(key))
-            elif key in [curses.KEY_BACKSPACE, ord('\b'), ord('\x7f')]:
-                if jumpNumList:
-                    jumpNumList.pop()
-            elif key == ord('g'):
-                jumpNumList = []
-                choiceIndex = 0
-            elif key == ord('G'):
-                jumpNumList = []
-                choiceIndex = len(options)-1
-            elif key in [ord('q'), ord('h'), curses.KEY_LEFT]:
-                raise KeyboardInterrupt
-            elif key in [curses.KEY_ENTER, 10, 13, ord('l'), curses.KEY_RIGHT]:
-                if jumpNumList:
-                    jumpNum = int(''.join(jumpNumList))
-                    choiceIndex = min(jumpNum-1, len(options)-1)
-                    jumpNumList = []
-                elif queryStyle is indicator_classes.ItemQuery:
-                    return options[choiceIndex]
-                elif queryStyle is indicator_classes.IndexQuery:
-                    return choiceIndex
-                elif queryStyle is indicator_classes.CombinedQuery:
-                    return options[choiceIndex], choiceIndex
-                else:
-                    raise UnknownQueryStyle
+            elif queryStyle is indicator_classes.ItemQuery:
+                return options[choiceIndex]
+            elif queryStyle is indicator_classes.IndexQuery:
+                return choiceIndex
+            elif queryStyle is indicator_classes.CombinedQuery:
+                return options[choiceIndex], choiceIndex
+            else:
+                raise UnknownQueryStyle
 
     
 # This function displays a piece of information to the user until they confirm having
@@ -152,9 +151,7 @@ def doGetUserInputNcurses(stdscr, query, maxInputLength=40):
 # no application level menu is presented, i.e by simply not providing a query and no
 # menu objects)
 def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=True, 
-        jumpNumStr='', canvas = None, ueberzug = None):
-    if canvas is None:
-        canvas = indicator_classes.NoCanvas()
+        jumpNumStr=''):
     stdscr.clear()
     height, width = stdscr.getmaxyx()
     screenCenterX = width//2
@@ -199,16 +196,6 @@ def printMenu(query, menu, stdscr, choiceIndex, xAlignment=None, showItemNumber=
         if itemX + len(itemString) >= width-1:
             itemString = itemString[:max((width-itemX-2),0)]
         attr = curses.color_pair(HIGHLIGHTED if i == choiceIndex else NOT_HIGHLIGHTED)
-        if i == choiceIndex and hasattr(item, 'description') and hasattr(item.description,
-                'getThumbnail') and type(canvas) is not indicator_classes.NoCanvas:
-            thumbnailWidth = itemX-1
-            thumbnailHeight = height-3
-            if not (thumbnailWidth <=0 or thumbnailHeight <=0):
-                thumbnailPlacement = canvas.create_placement('thumbnail', x=0, y=2, 
-                        scaler=ueberzug.ScalerOption.CONTAIN.value, width = thumbnailWidth, 
-                        height = thumbnailHeight)
-                thumbnailPlacement.path = item.description.getThumbnail()
-                thumbnailPlacement.visibility = ueberzug.Visibility.VISIBLE
         stdscr.attron(attr)
         itemY = screenCenterY - nRowsToPrint//2 + i + 2 - offset
         if itemY >= 0 and itemY < height-1 and itemString:

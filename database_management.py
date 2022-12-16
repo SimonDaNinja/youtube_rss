@@ -49,24 +49,9 @@ def removeSubscriptionFromDatabaseByChannelId(database, channelId):
     database['feeds'].pop(channelId)
     outputDatabaseToFile(database, constants.DATABASE_PATH)
 
-def deleteThumbnailsByChannelTitle(database, channelTitle):
-    if channelTitle not in database['title to id']:
-        return
-    channelId = database['title to id'][channelTitle]
-    deleteThumbnailsByChannelId(database, channelId)
-    return
-
-def deleteThumbnailsByChannelId(database, channelId):
-    if channelId not in database['id to title']:
-        return
-    feed = database['feeds'][channelId]
-    for entry in feed:
-        if os.path.isfile(entry['thumbnail file']):
-            os.remove(entry['thumbnail file'])
-
 # use this function to retrieve new RSS entries for a subscription and add them to
 # a database
-async def refreshSubscriptionsByChannelId(channelIdList, ueberzug, useTor=False, 
+async def refreshSubscriptionsByChannelId(channelIdList, useTor=False, 
         auth=None):
     database = parseDatabaseFile(constants.DATABASE_PATH)
     localFeeds = database['feeds']
@@ -82,9 +67,6 @@ async def refreshSubscriptionsByChannelId(channelIdList, ueberzug, useTor=False,
     for task in tasks:
         await task
 
-    if ueberzug:
-        await asyncio.create_task(getThumbnailsForAllSubscriptions(channelIdList, 
-            database, semaphore=semaphore, useTor=useTor, auth=auth))
     outputDatabaseToFile(database, constants.DATABASE_PATH)
 
 async def refreshSubscriptionByChannelId(channelId, localFeed, semaphore, useTor=False,
@@ -103,49 +85,13 @@ async def refreshSubscriptionByChannelId(channelId, localFeed, semaphore, useTor
                     filteredEntryIsNew = False
                     # in case any relevant data about the entry is changed, update it
                     filteredEntry['seen'] = localEntry['seen']
-                    if filteredEntry['thumbnail'] == localEntry['thumbnail'] and \
-                            'thumbnail file' in filteredEntry:
-                        filteredEntry['thumbnail file'] = localEntry['thumbnail file']
                     localFeed[i] = filteredEntry
                     break
             if filteredEntryIsNew:
                 localFeed.insert(0, filteredEntry)
 
-
-async def getThumbnailsForAllSubscriptions(channelIdList, database, semaphore, useTor=False, auth=None):
-    feeds = database['feeds']
-    tasks = []
-    for channelId in channelIdList:
-        feed = feeds[channelId]
-        tasks.append(asyncio.create_task(getThumbnailsForFeed(feed, 
-            semaphore=semaphore, useTor=useTor, auth=auth)))
-    for task in tasks:
-        await task
-
-
-async def getThumbnailsForFeed(feed, semaphore, useTor=False, auth = None):
-    getTasks = {}
-
-    for entry in feed:
-        if 'thumbnail file' in entry:
-            continue
-        videoId = entry['id'].split(':')[-1]
-        thumbnailFileName = '/'.join([constants.THUMBNAIL_DIR, videoId + 
-                '.jpg'])
-        getTask = asyncio.create_task(connection_management.getHttpContent(entry['thumbnail'], useTor=useTor,
-                semaphore=semaphore, auth = auth, contentType = 'bytes'))
-        getTasks[entry['id']] = (getTask, thumbnailFileName)
-
-    for entry in feed:
-        if 'thumbnail file' in entry:
-            continue
-        thumbnailContent = await getTasks[entry['id']][0]
-        thumbnailFileName = getTasks[entry['id']][1]
-        entry['thumbnail file'] = thumbnailFileName
-        open(thumbnailFileName, 'wb').write(thumbnailContent)
-
 # use this function to add a subscription to the database
-def addSubscriptionToDatabase(channelId, ueberzug, channelTitle, refresh=False,
+def addSubscriptionToDatabase(channelId, channelTitle, refresh=False,
         useTor=False, circuitManager=None):
     database = parseDatabaseFile(constants.DATABASE_PATH)
     database['feeds'][channelId] = []
@@ -156,5 +102,5 @@ def addSubscriptionToDatabase(channelId, ueberzug, channelTitle, refresh=False,
     if circuitManager is not None and useTor:
         auth = circuitManager.getAuth()
     if refresh:
-        asyncio.run(refreshSubscriptionsByChannelId( [channelId], ueberzug, useTor=useTor, 
+        asyncio.run(refreshSubscriptionsByChannelId( [channelId], useTor=useTor, 
                 auth=auth))
