@@ -334,7 +334,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.use_thumbnails:
-        presentation.doNotify("Thumbnails no longer supported (see README for mor info)!")
+        presentation.doNotify("Flag '--use-thumbnails' is no longer supported (see README for more info)!")
 
     if not os.path.isdir(constants.YOUTUBE_RSS_DIR):
         os.mkdir(constants.YOUTUBE_RSS_DIR)
