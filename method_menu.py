@@ -27,19 +27,12 @@ class FeedVideoDescriber:
     def __str__(self):
         return self.video['title'] + (' (unseen!)' if not self.video['seen'] else '')
 
-    def getThumbnail(self):
-        return self.video['thumbnail file']
-
 class VideoQueryObjectDescriber:
     def __init__(self, videoQueryObject):
         self.videoQueryObject = videoQueryObject
 
     def __str__(self):
         return self.videoQueryObject.title
-
-    def getThumbnail(self):
-        return '/'.join([constants.THUMBNAIL_SEARCH_DIR, 
-            self.videoQueryObject.videoId + '.jpg'])
 
 class FeedDescriber:
     def __init__(self, feed, channelTitle):
@@ -99,12 +92,11 @@ functions
 # this is a function for managing menu hierarchies; once called, a menu presents
 # application flows available to the user. If called from a flow selected in a previous
 # method menu, the menu becomes a new branch one step further from the root menu
-def doMethodMenu(query, menuOptions, ueberzug = None, showItemNumber = True, adHocKeys = []):
+def doMethodMenu(query, menuOptions, showItemNumber = True, adHocKeys = []):
     index = 0
     try:
         while True:
             methodMenuDecision, index = presentation.doSelectionQuery(query, menuOptions, 
-                    ueberzug = ueberzug,
                     initialIndex=index, queryStyle=indicator_classes.CombinedQuery,
                     showItemNumber=showItemNumber, adHocKeys=adHocKeys)
             try:

@@ -91,7 +91,7 @@ async def getChannelQueryResults(query, useTor=False, auth=None):
 
 # use this function to get a list of query results from searching for a video
 # results are of the type VideoQueryObject
-async def getVideoQueryResults(query, ueberzug, useTor=False, auth=None):
+async def getVideoQueryResults(query, useTor=False, auth=None):
     url = 'https://youtube.com/results?search_query=' + urllib.parse.quote(query) + \
             '&sp=EgIQAQ%253D%253D'
     semaphore = asyncio.Semaphore(constants.MAX_CONNECTIONS)
@@ -100,13 +100,6 @@ async def getVideoQueryResults(query, ueberzug, useTor=False, auth=None):
     htmlContent = await getTask
     parser = parser_classes.VideoQueryParser()
     parser.feed(htmlContent)
-    if ueberzug:
-        if os.path.isdir(constants.THUMBNAIL_SEARCH_DIR):
-            shutil.rmtree(constants.THUMBNAIL_SEARCH_DIR)
-        os.mkdir(constants.THUMBNAIL_SEARCH_DIR)
-        thumbnailTask = asyncio.create_task(getSearchThumbnails(parser.resultList,
-            ueberzug, semaphore=semaphore, useTor=useTor, auth = auth))
-        await thumbnailTask
 
     return parser.resultList
 
@@ -156,20 +149,3 @@ def getRelevantDictFromFeedParserDict(feedparserDict):
                     }
     return outputDict
 
-async def getSearchThumbnailFromSearchResult(result, ueberzug, semaphore, useTor=False, auth=None):
-    videoId = result.videoId.split(':')[-1]
-    thumbnailFileName = '/'.join([constants.THUMBNAIL_SEARCH_DIR, videoId +
-            '.jpg'])
-    getTask = asyncio.create_task(getHttpContent(result.thumbnail, semaphore=semaphore, useTor=useTor,
-            auth = auth, contentType='bytes'))
-    thumbnailContent = await getTask
-    result.thumbnailFile = thumbnailFileName
-    open(thumbnailFileName, 'wb').write(thumbnailContent)
-
-async def getSearchThumbnails(resultList, ueberzug, semaphore, useTor = False, auth=None):
-    tasks = []
-    for result in resultList:
-        tasks.append(asyncio.create_task(getSearchThumbnailFromSearchResult(result, 
-            ueberzug, semaphore = semaphore, useTor=useTor, auth=auth)))
-    for task in tasks:
-        await task

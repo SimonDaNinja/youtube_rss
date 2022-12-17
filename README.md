@@ -1,4 +1,4 @@
-# YouTube_RSS
+# YouTube\_RSS
 
 YouTube\_RSS is a simple YouTube client I've made for fun. The goal is to have a simple
 user interface for those who want to preserve their privacy when using YouTube, but who
@@ -22,8 +22,6 @@ aiohttp-socks
 feedparser
 urllib3
 ```
-If you want to get thumbnails for videos, you will additionally need to install the
-module `ueberzug`, e.g. using pip.
 
 The program also assumes that [mpv](https://github.com/mpv-player/mpv) is
 installed in the environment. In, for example, Ubuntu, this can be accomplished
@@ -77,16 +75,9 @@ When browsing subscriptions, in the menu where videos from a particular channel 
 items, the user can press `a` to toggle the highlighted entry as seen or unseen
 
 ## Thumbnails
-Thumbnails are disabled by default. If you want to view video thumbnails, you need to run
-YouTube\_RSS with the option `--use-thumbnails`. If you intend to do this in the long run,
-you might want to alias it into the base command.
+YouTube\_RSS used to support thumbnails, using
+[ueberzug](https://github.com/seebye/ueberzug), but no longer does, since that project
+has sadly been discontinued.
 
-Thumbnail support is still a bit new and experimental, so for now, use it at your own
-risk. The main concern to keep in mind is that thumbnail files will take up additional
-storage.
-
-## Files managed by the program
-The database file that is used to keep track of subscriptions is saved under `~/.youtube_rss/database`,
-and is formated as json.
-
-If you are using thumbnails, thumbnail files are stored under `~/.youtube_rss/thumbnails/`
+If you used YouTube\_RSS with thumbnails in the past, you need to manually delete
+thumbnail files, which are stored under `~/.youtube_rss/thumbnails`.
