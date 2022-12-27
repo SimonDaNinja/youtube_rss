@@ -30,8 +30,8 @@ def doYesNoQuery(query):
 # This function is where the Ncurses level of doYesNoQuery starts.
 # It should never be called directly, but always through doYesNoQuery!
 def doYnQueryNcurses(stdscr, query):
-    return doSelectionQueryNcurses(stdscr, query, ['yes','no'], False, showItemNumber=False) \
-            =='yes'
+    return doSelectionQueryNcurses(stdscr, query, ['yes','no'], 
+            indicator_classes.ItemQuery, showItemNumber=False) == 'yes'
 
 # This function lets the user choose an object from a list
 def doSelectionQuery(query, options, queryStyle=indicator_classes.ItemQuery, 
@@ -101,7 +101,7 @@ def doSelectionQueryNcurses(stdscr, query, options,
             elif queryStyle is indicator_classes.CombinedQuery:
                 return options[choiceIndex], choiceIndex
             else:
-                raise UnknownQueryStyle
+                raise UnknownQueryStyle(f"Unknown query style: {queryStyle}")
 
     
 # This function displays a piece of information to the user until they confirm having

@@ -115,7 +115,7 @@ def doChannelSubscribe(result, useTor, circuitManager):
     while refreshing:
         try:
             presentation.doWaitScreen(f"getting data from feed for {result.title}...",
-                    method_menu.addSubscriptionToDatabase, result.channelId,
+                    database_management.addSubscriptionToDatabase, result.channelId,
                     result.title, refresh=True, useTor=useTor,
                     circuitManager=circuitManager)
             refreshing = False
